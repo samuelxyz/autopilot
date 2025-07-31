@@ -1,0 +1,15 @@
+[project]
+name = "autopilot"
+version = "0.1"
+dependencies = [
+    "matplotlib == 3.10.3",
+    "numpy == 2.2.6",
+    "numpy-quaternion == 2024.0.8",
+]
+license = {text = "MIT"}
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [{ name = "Tanamr" },]
+
+[project.urls]
+homepage = "https://github.com/samuelxyz/autopilot"
+repository = "https://github.com/samuelxyz/autopilot"

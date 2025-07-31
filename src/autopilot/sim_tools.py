@@ -1,4 +1,5 @@
 import numpy as np
+import itertools
 
 class History(dict):
     '''Dictionary tracking the history of specified arbitrary floats or numpy arrays. 
@@ -32,4 +33,21 @@ class History(dict):
                     tracker_array[i] = thing_to_be_written
             except:
                 tracker_array[i] = np.nan
-    
+
+
+def run_simulation(time_arr, update_func, hist=None):
+    '''Run a simulation across the given timestamps.
+
+    Parameters:
+        time_arr: Sequence of timestamps (in seconds, for example)
+        update_func: Function matching the signature update_func(start_time, dt) to update simulation at each timestep, with argument dt being the length of the timestep
+        hist: Optional History object to be updated after each timestep
+
+    '''
+    if hist is not None:
+        hist.save_timestep(0)
+    for i, (t_old, t_new) in enumerate(itertools.pairwise(time_arr)):
+        dt = t_new - t_old
+        update_func(t_old, dt)
+        if hist is not None:
+            hist.save_timestep(i+1)

@@ -1,5 +1,5 @@
-# util.py
-# Contains various reference material, constants, and type definitions
+# state_def.py
+# Contains various type definitions and functions related to state vectors
 
 import numpy as np
 import quaternion as quat
@@ -22,8 +22,9 @@ import quaternion as quat
 #   pos  ---- | orient ------ | vel ---- | angvel --- |
 #   0   1   2   3   4   5   6   7   8   9   10  11  12
 STATE_N = 13
-POS    = slice(0, 3)
-ORIENT = slice(3, 7)
+NxN = (STATE_N, STATE_N)
+POS    = slice(0, 3) # any vector v + this will convert v from local into world frame
+ORIENT = slice(3, 7) # applying to any vector v will convert v from local into world frame
 VEL    = slice(7, 10)
 ANGVEL = slice(10, 13)
 VELS   = slice(7, 13)
@@ -38,11 +39,24 @@ def get_orient(state: np.array) -> np.array:
     or array of orientations, as quaternions'''
     return quat.from_float_array(state[..., ORIENT])
 
-def rotate(state: np.array, rotation: np.quaternion):
+def rotate_state(state: np.array, rotation: np.quaternion):
     '''Update only the orientation of the state or array of states. Other parts of 
     the generalized coordinates do not get coordinate transforms applied or anything'''
     # multiplying quat on the left == compose rotations
     state[..., ORIENT] = quat.as_float_array(rotation * get_orient(state))
+
+def normalize_quat_part(state: np.array):
+    state[ORIENT] = quat.as_float_array(np.normalized(get_orient(state)))
+
+# Not sure where this would be better situated but i'll put it here for now
+def as_4x4_matrix(quat):
+    '''Convert quat into a 4x4 matrix Q, such that Q * as_float_array(other_quat) == quat * other_quat'''
+    return np.array([
+        [quat.w, -quat.x, -quat.y, -quat.z,],
+        [quat.x,  quat.w, -quat.z,  quat.y,],
+        [quat.y,  quat.z,  quat.w, -quat.x,],
+        [quat.z, -quat.y,  quat.x,  quat.w,],
+    ])
 
 # Action / qdot / ddt(state) elements
 #   lin ----- | ang ----- |
@@ -62,7 +76,7 @@ def change_to_frame(frame: np.array, other: np.array):
     rotation_into_frame_q = get_orient(frame).conj()
     rotation_into_frame_m = quat.as_rotation_matrix(rotation_into_frame_q)
     result[POS] = rotation_into_frame_m @ (other[POS] - frame[POS])
-    rotate(result, rotation_into_frame_q) # affects orientation quat only
+    rotate_state(result, rotation_into_frame_q) # affects orientation quat only
     result[VEL] = rotation_into_frame_m @ (other[VEL] - frame[VEL]) - np.cross(frame[ANGVEL], result[POS])
     result[ANGVEL] = rotation_into_frame_m @ (other[ANGVEL] - frame[ANGVEL])
     return result
