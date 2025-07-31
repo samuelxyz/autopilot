@@ -75,7 +75,7 @@ def scenario_sensing():
     ax_ang.plot(time, hist['true_state'][:, sd.ANGVEL.start], label='True omega_x')
     ax_ang.plot(time, ang_est, label='Est omega_x')
     ax_ang.fill_between(time, ang_est - ang_sd, ang_est + ang_sd, alpha=0.2, color='C1')
-    ax_ang.set_ylabel('Angular velocity (rad/s^2)')
+    ax_ang.set_ylabel('Angular velocity (rad/s)')
     ax_ang.legend()
     ax_ang.grid()
     ax_ang.set_ylim(0, 0.2)
