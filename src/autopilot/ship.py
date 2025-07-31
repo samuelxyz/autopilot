@@ -30,49 +30,28 @@ class Ship:
             start_time: time at beginning of timestep
             dt: length of timestep
             '''
+        # Physics
+        self.state = sd.RK4_step(self.state, dt, self.calc_accel)
+        
+        # Predict
         if self.state_det_system is not None:
-            self.state_det_system.update(self.state, start_time, dt, self.calc_accel(self.state))
+             self.state_det_system.predict_step(dt, self.calc_accel)
+
+        # Sense
+        if self.state_det_system is not None:
+            self.state_det_system.sense(self.state, start_time)
             self.state_estimate = self.state_det_system.get_current_state_estimate()
         else:
+            # No sensor system, just use an ideal dummy sensor system
             self.state_estimate = (self.state, np.zeros((self.state.size, self.state.size)))
-        if self.controller is not None:
-            self.controller.update(self.state, dt)
-        self.do_motion_timestep(dt)
-
-    def do_motion_timestep(self, dt):
-        '''Update ship state according to RK4 integration of the equations of motion'''
-        # RK4 ish
-        # Call old conditions a0, v0, q0
-        # Step 1 with dt/2, a0 -> v[0 -> 1] -> q[0 -> 1] -> a1
-        accel0 = self.calc_accel(self.state)
-        state1 = self.state.copy()
-        state1[sd.VELS] += accel0*dt/2
-        state1[sd.POS] += state1[sd.VEL]*dt/2
-        sd.rotate_state(state1, quat.from_rotation_vector(state1[sd.ANGVEL]*dt/2))
-        accel1 = self.calc_accel(state1)
-        # Step 2 with dt/2, a1 -> v[0 -> 2] -> q[0 -> 2] -> a2 
-        state2 = self.state.copy()
-        state2[sd.VELS] += accel1*dt/2
-        state2[sd.POS] += state2[sd.VEL]*dt/2
-        sd.rotate_state(state2, quat.from_rotation_vector(state2[sd.ANGVEL]*dt/2))
-        accel2 = self.calc_accel(state2)
-        # Step 3 with dt, a2 -> v[0 -> 3] -> q[0 -> 3] -> a3
-        state3 = self.state.copy()
-        state3[sd.VELS] += accel2*dt/2
-        state3[sd.POS] += state3[sd.VEL]*dt
-        sd.rotate_state(state3, quat.from_rotation_vector(state3[sd.ANGVEL]*dt/2))
-        accel3 = self.calc_accel(state3)
-        # Step 4 with dt, fractional weights
-        self.state[sd.POS] += dt/6 * (self.state[sd.VEL] + 2*state1[sd.VEL] + 2*state2[sd.VEL] + state3[sd.VEL])
-        sd.rotate_state(self.state, quat.from_rotation_vector(dt/6 * (self.state[sd.ANGVEL] + 2*state1[sd.ANGVEL] + 2*state2[sd.ANGVEL] + state3[sd.ANGVEL])))
-        self.state[sd.VELS] += dt/6 * (accel0 + 2*accel1 + 2*accel2 + accel3)
         
-        # normalize orientation quaternion
-        # self.state[sd.ORIENT] /= np.linalg.norm(self.state[sd.ORIENT])
-        sd.normalize_quat_part(self.state)
+        # Control
+        if self.controller is not None:
+            self.controller.update(self.state_estimate[0], dt)
 
     def calc_accel(self, state) -> np.ndarray:
-        '''Calculates the linear and angular acceleration (total shape (6,)) from actors on the current state'''
+        '''Calculates the linear and angular acceleration (total shape (6,)) 
+        from ship properties and the given state'''
         result = np.zeros((sd.QDOT_N,))
         # rotation_matrix = quat.as_rotation_matrix(sd.get_orient(self.state))
         # world_inertia_matrix = rotation_matrix @ self.inertia_matrix @ rotation_matrix.T

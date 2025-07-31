@@ -80,3 +80,46 @@ def change_to_frame(frame: np.array, other: np.array):
     result[VEL] = rotation_into_frame_m @ (other[VEL] - frame[VEL]) - np.cross(frame[ANGVEL], result[POS])
     result[ANGVEL] = rotation_into_frame_m @ (other[ANGVEL] - frame[ANGVEL])
     return result
+
+def RK4_step(state, dt, accel_calculator):
+    '''Propagate the given state given an acceleration function.
+    
+    Parameters:
+        state: State at the start of timestep (will not be modified in-place)
+        dt: Length of timestep
+        accel_calculator: function matching accel_calculator(some_state) -> [linear and angular acceleration]
+    Returns:
+        A new state vector at end of timestep
+    '''
+    # RK4 ish
+    # Call old conditions a0, v0, q0
+    # Step 1 with dt/2, a0 -> v[0 -> 1] -> q[0 -> 1] -> a1
+    accel0 = accel_calculator(state)
+    state1 = state.copy()
+    state1[VELS] += accel0*dt/2
+    state1[POS] += state1[VEL]*dt/2
+    rotate_state(state1, quat.from_rotation_vector(state1[ANGVEL]*dt/2))
+    accel1 = accel_calculator(state1)
+    # Step 2 with dt/2, a1 -> v[0 -> 2] -> q[0 -> 2] -> a2 
+    state2 = state.copy()
+    state2[VELS] += accel1*dt/2
+    state2[POS] += state2[VEL]*dt/2
+    rotate_state(state2, quat.from_rotation_vector(state2[ANGVEL]*dt/2))
+    accel2 = accel_calculator(state2)
+    # Step 3 with dt, a2 -> v[0 -> 3] -> q[0 -> 3] -> a3
+    state3 = state.copy()
+    state3[VELS] += accel2*dt/2
+    state3[POS] += state3[VEL]*dt
+    rotate_state(state3, quat.from_rotation_vector(state3[ANGVEL]*dt/2))
+    accel3 = accel_calculator(state3)
+    # Step 4 with dt, fractional weights
+
+    result = state.copy()
+    result[POS] += dt/6 * (state[VEL] + 2*state1[VEL] + 2*state2[VEL] + state3[VEL])
+    rotate_state(result, quat.from_rotation_vector(dt/6 * (result[ANGVEL] + 2*state1[ANGVEL] + 2*state2[ANGVEL] + state3[ANGVEL])))
+    result[VELS] += dt/6 * (accel0 + 2*accel1 + 2*accel2 + accel3)
+    
+    # normalize orientation quaternion
+    # state[ORIENT] /= np.linalg.norm(state[ORIENT])
+    normalize_quat_part(result)
+    return result

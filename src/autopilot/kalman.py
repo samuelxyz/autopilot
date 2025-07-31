@@ -84,11 +84,11 @@ class KalmanFilter:
         assert np.shape(self.A) == np.shape(self.P)
         assert np.shape(self.Q) == np.shape(self.A)
 
-        self.xp = np.full_like(self.x, np.nan)
-        self.Pp = np.full_like(self.P, np.nan)
+        self.xp = self.x.copy()
+        self.Pp = self.P.copy()
         self.K = np.full_like(np.transpose(self.H), np.nan)
 
-    def step(self, A: np.ndarray = None, Q: np.ndarray = None):
+    def predict_step(self, A: np.ndarray = None, Q: np.ndarray = None):
         '''Update the filter by predicting the next state vector (advance one timestep).
         
         Parameters:
@@ -164,7 +164,7 @@ class ExtendedKalmanFilter(KalmanFilter):
         super().__init__(x, P, A, Q, H, R)
         self.zp = np.nan
 
-    def step(self, xp, A=None, Q=None):
+    def predict_step(self, xp, A=None, Q=None):
         '''Update the filter by predicting the next state vector (advance one timestep).
         
         Parameters:
@@ -248,7 +248,7 @@ if __name__ == '__main__':
         })
         A = np.eye(2)
         for i in range(num_steps):
-            kalman_filter.step(A)
+            kalman_filter.predict_step(A)
             kalman_filter.process_observation(noisy_observations[i])
             hist.save_timestep(i)
 

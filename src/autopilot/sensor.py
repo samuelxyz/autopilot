@@ -64,6 +64,9 @@ class IntermittentSensor(Sensor):
     
 class Gyroscope(Sensor):
     '''A sensor that directly reads angular velocity in the local frame.'''
+    # SMAD: biases typically 0.003 - 1 deg/hr (1.5e-8 - 5e-6 rad/s), drift in bias varies widely
+    # Mass: <0.1 - 15 kg
+    # Power: <1 to 200 W
 
     def __init__(self, constant_noise, randseed=None):
         super().__init__(3, constant_noise, randseed)
@@ -86,6 +89,9 @@ class Gyroscope(Sensor):
     
 class StarTracker(IntermittentSensor):
     '''An accurate orientation sensor that is only available at certain time intervals.'''
+    # SMAD: 1 arcsec - 1 arcmin (5e-6 - 3e-4 rad)
+    # Mass: 2-5 kg
+    # Power: 5-20 W
 
     # For Kalman filter
     H = np.zeros((4, sd.STATE_N))
@@ -129,9 +135,20 @@ class StarTracker(IntermittentSensor):
         return StarTracker.H
 
 class HorizonSensor(Sensor):
+    # SMAD: Scanning type 0.1 - 0.25 deg (2e-3 - 4e-3 rad) for LEO, down to 0.03 deg (5e-4 rad) in non LEO
+    # Mass: 2-5 kg
+    # Power: 5-10 W
+    
+    # Fixed type for rotating spacecraft: <0.1 - 0.25 deg (2e-3 - 4e-3 rad)
+    # Mass: 0.5 - 3.5 kg
+    # Power: 0.3 - 5 W
+
     pass # TODO
 
 class SunSensor(Sensor):
+    # SMAD: Accuracy 0.005 - 3 deg (1e-4 - 5e-2 rad)
+    # Mass: 0.1 - 2 kg
+    # Power: 0-3 W
     pass # TODO
 
 class GPSReceiver(Sensor):
@@ -141,22 +158,32 @@ class Radar(Sensor):
     pass # TODO
 
 class StateDeterminationSystem:
+    '''Sensor fusion system based around the Extended Kalman Filter.'''
+
     def __init__(self, sensors: list[Sensor], x, P, Q):
         self.sensors = sensors
         self.Q = Q
         self.EKF = kalman.ExtendedKalmanFilter(x, P, Q)
+        self.is_up_to_date = True # Whether self.EKF.x is better to use than self.EKF.xp
 
-    def update(self, true_state, start_time, dt, predicted_accel):
-        active_sensors = [s for s in self.sensors if s.is_available(true_state, start_time)]
+    def predict_step(self, dt, predicted_accel):
+        '''Run the prediction step of the EKF, propagating the estimated state by one timestep.
+        Updates EKF.xp and EKF.Pp, but not EKF.x or EKF.P'''
 
-        # Predict
-        xp, A = self._predict_next_state(dt, predicted_accel)
-        self.EKF.step(xp, A, self.Q)
+        xp = sd.RK4_step(self.EKF.x, dt, predicted_accel)
 
-        # Update
+        A = kalman.make_state_transition_matrix(dt, self.EKF.x)
+        self.EKF.predict_step(xp, A, self.Q)        
+        sd.normalize_quat_part(self.EKF.x)
+        self.is_up_to_date = False
+
+    def sense(self, true_state, timestamp):
+        '''Take a reading from all available sensors, updating the EKF.'''
+        active_sensors = [s for s in self.sensors if s.is_available(true_state, timestamp)]
         H  = np.vstack(tuple(s.linearized_model(self.EKF.xp) for s in active_sensors))
         zp = np.concat(tuple(s.predict_reading(self.EKF.xp) for s in active_sensors)).T
         z  = np.concat(tuple(s.new_reading(true_state) for s in active_sensors)).T
+        
         # assemble R
         R = np.eye(z.size)
         i = 0
@@ -165,16 +192,13 @@ class StateDeterminationSystem:
             inds = slice(i, i+R_sensor.shape[0])
             R[inds, inds] = R_sensor
             i += R_sensor.shape[0]
+
         self.EKF.process_observation(z, zp, H, R)
         sd.normalize_quat_part(self.EKF.x)
-
-    def _predict_next_state(self, dt, predicted_accel):
-        # Could use RK4 but ehh
-        xp = self.EKF.x.copy()
-        xp[sd.VELS] += predicted_accel * dt
-        xp[sd.POS] += xp[sd.VEL] * dt
-        sd.rotate_state(xp, quat.from_rotation_vector(xp[sd.ANGVEL] * dt))
-        return xp, kalman.make_state_transition_matrix(dt, self.EKF.x)
+        self.is_up_to_date = True
 
     def get_current_state_estimate(self):
-        return self.EKF.x, self.EKF.P
+        if self.is_up_to_date:
+            return self.EKF.x, self.EKF.P
+        else:
+            return self.EKF.xp, self.EKF.Pp
