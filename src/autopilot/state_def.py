@@ -123,3 +123,71 @@ def RK4_step(state, dt, accel_calculator):
     # state[ORIENT] /= np.linalg.norm(state[ORIENT])
     normalize_quat_part(result)
     return result
+
+def state_from_orbit_properties(GM, center=[0,0,0], semimajor_axis=None, period=None, eccentricity=None, 
+                                periapsis=None, apoapsis=None, inclination=0., long_asc_node=0., 
+                                arg_periapsis=0., true_anomaly=0.):
+    '''Generate a state vector from various orbital properties (consistent distance/time units, radians). 
+    
+    Use exactly one of these combos:
+    * Semimajor axis a and eccentricity e
+    * Period T and eccentricity e
+    * Periapsis q and apoapsis Q
+    * Periapsis q and eccentricity e
+    '''
+    # First unscramble all the optional params into a and e
+    a = None # semimajor axis
+    e = None # eccentricity
+    if semimajor_axis is not None:
+        a = semimajor_axis
+        e = eccentricity
+    elif period is not None:
+        a = np.cbrt(GM * (period / (2*np.pi))**2)
+        e = eccentricity
+    elif periapsis is not None and apoapsis is not None:
+        a = (periapsis + apoapsis)/2
+        e = (apoapsis - periapsis) / (apoapsis + periapsis)
+    elif periapsis is not None and eccentricity is not None:
+        e = eccentricity
+        a = periapsis * (1 - e)
+    assert a is not None and e is not None, 'Unsupported combination of orbit parameters given'
+
+    p = a*(1-e**2) # semi-latus rectum
+    h = np.sqrt(GM * p) # specific angular momentum scalar
+    nu = true_anomaly
+
+    # Source: https://orbital-mechanics.space/classical-orbital-elements/orbital-elements-and-the-state-vector.html
+    # In the orbit perifocal frame (x toward periapsis, z toward angular momentum)
+    pos_w = h**2 / GM / (1 + e*np.cos(nu)) * np.array([np.cos(nu), np.sin(nu), 0.])
+    vel_w = GM / h * np.array([-np.sin(nu), e + np.cos(nu), 0])
+
+    # Rotate out of perifocal frame
+    om = arg_periapsis
+    Om = long_asc_node
+    i = inclination
+    R1 = np.array([[ np.cos(om), np.sin(om), 0],
+                   [-np.sin(om), np.cos(om), 0],
+                   [0, 0, 1]])
+    R2 = np.array([[1, 0, 0,],
+                   [0,  np.cos(i), np.sin(i)],
+                   [0, -np.sin(i), np.cos(i)]])
+    R3 = np.array([[ np.cos(Om), np.sin(Om), 0],
+                   [-np.sin(Om), np.cos(Om), 0],
+                   [0, 0, 1]])
+    R = R1 @ R2 @ R3
+    pos = pos_w @ R
+    vel = vel_w @ R
+
+    state = make_zero_state()
+    state[POS] = pos + center
+    state[VEL] = vel
+    return state
+
+if __name__ == '__main__':
+    # h = 19646.883e6
+    # p = h^2/mu = 968389
+    # a = p/(1-e^2) = 9559996
+    print(state_from_orbit_properties(3.986e14, semimajor_axis=9559996, eccentricity=0.948, 
+                                      inclination=np.deg2rad(124.05), long_asc_node=np.deg2rad(190.62), 
+                                      arg_periapsis=np.deg2rad(303.09), true_anomaly=np.deg2rad(159.61)))
+    # [1, 5, 7]e6, [1, 0, 0, 0], [3, 4, 5]e3, [0, 0, 0]

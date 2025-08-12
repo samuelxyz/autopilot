@@ -35,7 +35,7 @@ class Sensor:
         return self.reading
     
     def cov(self, state):
-        '''Estimate error covariance at state. For use with Kalman filters.'''
+        '''Estimate error covariance of the sensor reading at the given state. For use with Kalman filters.'''
         return self.cov_matrix
     
     def predict_reading(self, state):
@@ -151,8 +151,43 @@ class SunSensor(Sensor):
     # Power: 0-3 W
     pass # TODO
 
-class GPSReceiver(Sensor):
-    pass # TODO
+class DistanceSignal(IntermittentSensor):
+    '''A simulated sensor comprising a distance reading from a single GPS-like satellite whose position is known. 
+    Sensor output is the distance to this satellite.'''
+    
+    def __init__(self, satellite_state, satellite_actors, constant_noise, sensing_interval, randseed=None):
+        super().__init__(1, constant_noise, sensing_interval, randseed)
+        self.satellite_state = satellite_state
+        self.satellite_actors = satellite_actors
+
+    # TODO: add occultation checks for is_available()
+
+    def update_simulation(self, dt):
+        def calc_accel(state):
+            result = np.zeros((sd.QDOT_N,))
+            for actor in self.satellite_actors:
+                result += actor.get_accel(state, None, None)
+            return result
+        self.satellite_state = sd.RK4_step(self.satellite_state, dt, calc_accel)
+
+    def new_reading(self, true_state):
+        distance = np.linalg.vector_norm(true_state[sd.POS] - self.satellite_state[sd.POS])
+        assert self.cov_matrix.size == 1
+        self.reading = (distance + self.rng.normal(0, np.sqrt(self.cov_matrix))).reshape(1)
+        return self.reading
+    
+    def predict_reading(self, state):
+        return np.linalg.vector_norm(state[sd.POS] - self.satellite_state[sd.POS])
+    
+    def linearized_model(self, state):
+        H = np.zeros(sd.STATE_N)
+        x_minus_x0 = state[sd.POS] - self.satellite_state[sd.POS]
+        H[sd.POS] = x_minus_x0 / np.linalg.vector_norm(x_minus_x0)
+        return H[np.newaxis, :]
+
+class PositionSensor(IntermittentSensor):
+    '''An idealized sensor that simply outputs the ship's absolute position. 
+    Can be thought of as the output of a more sophisticated GPS receiver subsystem.'''
 
 class Radar(Sensor):
     pass # TODO
@@ -166,11 +201,11 @@ class StateDeterminationSystem:
         self.EKF = kalman.ExtendedKalmanFilter(x, P, Q)
         self.is_up_to_date = True # Whether self.EKF.x is better to use than self.EKF.xp
 
-    def predict_step(self, dt, predicted_accel):
+    def predict_step(self, dt, accel_predictor):
         '''Run the prediction step of the EKF, propagating the estimated state by one timestep.
         Updates EKF.xp and EKF.Pp, but not EKF.x or EKF.P'''
 
-        xp = sd.RK4_step(self.EKF.x, dt, predicted_accel)
+        xp = sd.RK4_step(self.EKF.x, dt, accel_predictor)
 
         A = kalman.make_state_transition_matrix(dt, self.EKF.x)
         self.EKF.predict_step(xp, A, self.Q)        
@@ -180,9 +215,9 @@ class StateDeterminationSystem:
     def sense(self, true_state, timestamp):
         '''Take a reading from all available sensors, updating the EKF.'''
         active_sensors = [s for s in self.sensors if s.is_available(true_state, timestamp)]
-        H  = np.vstack(tuple(s.linearized_model(self.EKF.xp) for s in active_sensors))
-        zp = np.concat(tuple(s.predict_reading(self.EKF.xp) for s in active_sensors)).T
-        z  = np.concat(tuple(s.new_reading(true_state) for s in active_sensors)).T
+        H  = np.vstack(tuple(np.atleast_1d(s.linearized_model(self.EKF.xp)) for s in active_sensors)) 
+        zp = np.concat(tuple(np.atleast_1d(s.predict_reading(self.EKF.xp)) for s in active_sensors)).T
+        z  = np.concat(tuple(np.atleast_1d(s.new_reading(true_state)) for s in active_sensors)).T
         
         # assemble R
         R = np.eye(z.size)
