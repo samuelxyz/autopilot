@@ -17,13 +17,12 @@ class Sensor:
             randseed: Seed for noise generator, used for reproducibility
         '''
         self.dim = dim
-        self.reading = np.full(dim, np.nan) # The last reading
         self.rng = np.random.default_rng(randseed)
         match np.ndim(constant_noise):
             case 0: self.cov_matrix = np.eye(dim) * constant_noise**2
             case 1: self.cov_matrix = np.diag(constant_noise**2)
             case 2: self.cov_matrix = constant_noise**2
-            case _: self.cov_matrix = np.nan
+            case _: assert False, 'Unexpected number of dimensions in parameter `constant_noise`'
     
     def is_available(self, true_state, time):
         '''Whether this sensor can currently produce an observation.'''
@@ -192,7 +191,20 @@ class PositionSensor(IntermittentSensor):
 class Radar(Sensor):
     pass # TODO
 
-class StateDeterminationSystem:
+class SensorSystem:
+    '''Dummy state determination system that is just a perfect state sensor'''
+    def __init__(self, x):
+        self.x = np.asarray(x)
+        self.P = np.zeros((self.x.size, self.x.size)) # covariance/error of x is zero because ideal
+    def predict_step(self, dt, accel_predictor):
+        # self.x = sd.RK4_step(self.x, dt, accel_predictor)     
+        # sd.normalize_quat_part(self.EKF.x) 
+        pass
+    def sense(self, true_state, timestamp):
+        self.x = true_state # ideal/perfect sensor
+    def get_current_state_estimate(self):
+        return (self.x, self.P)
+class SensorSystem_EKF(SensorSystem):
     '''Sensor fusion system based around the Extended Kalman Filter.'''
 
     def __init__(self, sensors: list[Sensor], x, P, Q):

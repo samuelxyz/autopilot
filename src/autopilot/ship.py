@@ -11,13 +11,15 @@ import sensor
 class Ship:
 
     def __init__(self, state, mass, inertia_matrix, controller: controller.Controller = None, 
-                 state_det_system: sensor.StateDeterminationSystem = None, 
+                 state_det_system: sensor.SensorSystem = None, 
                  actors: list[actor.Actor] = []):
         self.state = np.asarray(state) # current state, updated every timestep. q, qdot
         # self.state_history = ...
         self.mass = mass # something
         self.inertia_matrix = inertia_matrix # body frame
         self.controller = controller
+        if self.controller is None:
+            self.controller = sensor.SensorSystem(self.state)
         self.state_det_system = state_det_system
         self.actors = actors
         self.setpoint = np.ones(3)
@@ -34,16 +36,11 @@ class Ship:
         self.state = sd.RK4_step(self.state, dt, self.calc_accel)
         
         # Predict
-        if self.state_det_system is not None:
-             self.state_det_system.predict_step(dt, self.calc_accel)
+        self.state_det_system.predict_step(dt, self.calc_accel)
 
         # Sense
-        if self.state_det_system is not None:
-            self.state_det_system.sense(self.state, start_time)
-            self.state_estimate = self.state_det_system.get_current_state_estimate()
-        else:
-            # No sensor system, just use an ideal dummy sensor system
-            self.state_estimate = (self.state, np.zeros((self.state.size, self.state.size)))
+        self.state_det_system.sense(self.state, start_time)
+        self.state_estimate = self.state_det_system.get_current_state_estimate()
         
         # Control
         if self.controller is not None:

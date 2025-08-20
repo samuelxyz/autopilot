@@ -51,3 +51,11 @@ def run_simulation(time_arr, update_func, hist=None):
         update_func(t_old, dt)
         if hist is not None:
             hist.save_timestep(i+1)
+
+class Flag:
+    '''System to denote when some special event occurs in the simulation'''
+    def __init__(self, text, time, end_sim=False):
+        self.text=text
+        self.time=time
+        self.end_sim = end_sim
+

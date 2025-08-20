@@ -7,6 +7,7 @@ import matplotlib.ticker as tck
 import ship, thruster, controller, sensor
 import state_def as sd
 import sim_tools
+import environment
 import actor
 
 def scenario_ideal_binary_control():
@@ -14,8 +15,8 @@ def scenario_ideal_binary_control():
     # controller_ = controller.PID(np.zeros(3), (0.5, 0, 5), (3,), thruster_pack)
     thruster_accel = 2
     thruster_pack = thruster.Thrusters_Fixed_Binary_6(thruster_accel)
-    controller_ = controller.Binary_Controller_3(sd.make_zero_state(), thruster_accel, thruster_pack)
-    state = sd.make_zero_state()
+    controller_ = controller.Binary_Controller_3(sd.make_state(), thruster_accel, thruster_pack)
+    state = sd.make_state()
     state[sd.VEL] = 2.*np.ones(3)
     ship_ = ship.Ship(state, 1, np.eye(3), controller_, actors=[thruster_pack,])
 
@@ -45,7 +46,7 @@ def scenario_sensing():
     sim_duration = 10
     time = np.linspace(0, sim_duration, num_steps)
 
-    earth_gravity = actor.Gravity((0, 0, 0), actor.GM_Earth)
+    env_ECI = environment.make_environment_ECI()
 
     gyro = sensor.Gyroscope(1e-3, randseed)
     star_tracker = sensor.StarTracker(1e-4, 1, randseed)
@@ -57,17 +58,19 @@ def scenario_sensing():
             actor.GM_Earth, period=86400/2, eccentricity=0, inclination=1, 
             long_asc_node=2*np.pi*p/gps_planes, true_anomaly=2*np.pi*i/gps_n_per_plane
         ),
-        [earth_gravity,], 0.1, 2, 1234)
+        env_ECI.get_gravity_actors(), 0.1, 2, 1234)
         for i in range(gps_n_per_plane) for p in range(gps_planes)
     ]
-    sds = sensor.StateDeterminationSystem(
-        [gyro, star_tracker] + gps_sats, sd.make_zero_state(), 0.1*np.eye(sd.STATE_N), 
+    sds = sensor.SensorSystem_EKF(
+        [gyro, star_tracker] + gps_sats, 
+        sd.make_state(), # initial x estimate
+        np.diag([1e8, 1e8, 1e8, 1, 1, 1, 1, 1e5, 1e5, 1e5, 1, 1, 1]), # initial P - uninformative
         1e-7 * np.eye(sd.STATE_N) # if Q is zero then P tends to become singular in the Kalman filter
     )
 
-    ship_state = sd.state_from_orbit_properties(actor.GM_Earth, period=10_000, eccentricity=0)
-    ship_state[sd.ANGVEL] = [0.1, 0.1, 0.1]
-    ship_ = ship.Ship(ship_state, 1, np.eye(3), state_det_system=sds, actors=[earth_gravity,])
+    ship_state = sd.state_from_orbit_properties(actor.GM_Earth, period=10_000, eccentricity=0,
+                                                body_angvel=(0.1, 0.1, 0.1))
+    ship_ = ship.Ship(ship_state, 1, np.eye(3), state_det_system=sds, actors=env_ECI.get_gravity_actors())
 
     hist = sim_tools.History(num_steps, {
         'true_state': lambda: ship_.state,
@@ -76,8 +79,8 @@ def scenario_sensing():
         # 'est_state': lambda: sds.EKF.x,
         # 'est_state_cov': lambda: sds.EKF.P,
     })
-    def update_simulation(start_time, dt):
-        ship_.update(start_time, dt)
+    def update_simulation(step_start_time, dt):
+        ship_.update(step_start_time, dt)
         for sat in gps_sats:
             sat.update_simulation(dt)
     sim_tools.run_simulation(time, update_simulation, hist)

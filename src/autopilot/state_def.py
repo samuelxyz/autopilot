@@ -4,19 +4,6 @@
 import numpy as np
 import quaternion as quat
 
-# old stuff
-# state = np.dtype([
-#     ('pos', 'f4', (3,)),
-#     ('orient', np.quaternion),
-#     ('vel', 'f4', (3,)),
-#     ('angvel', 'f4', (3,)),
-#     ])
-
-# qdot = np.dtype([
-#     ('lin', 'f4', (3,)),
-#     ('ang', 'f4', (3,)),
-# ])
-
 # State vector elements
 #                             | vels ---------------- |
 #   pos  ---- | orient ------ | vel ---- | angvel --- |
@@ -29,9 +16,14 @@ VEL    = slice(7, 10)
 ANGVEL = slice(10, 13)
 VELS   = slice(7, 13)
 
-def make_zero_state():
-    state = np.zeros(STATE_N)
-    state[ORIENT.start] = 1
+# Low-level functions for manipulating states 
+
+def make_state(pos=None, orient=None, vel=None, angvel=None):
+    state = np.empty(STATE_N)
+    state[POS] = 0 if pos is None else pos
+    state[ORIENT] = (1, 0, 0, 0) if orient is None else orient
+    state[VEL] = 0 if vel is None else vel
+    state[ANGVEL] = 0 if angvel is None else angvel
     return state
 
 def get_orient(state: np.array) -> np.array:
@@ -69,6 +61,7 @@ def change_to_frame(frame: np.array, other: np.array):
     '''Returns a state vector describing `other` from the point of view of `frame`.
     Parameters and return values are all state vectors.
     '''
+    # This was a fun exercise but I dont think I will use it.
     # Probably has crazy bugs. hard to find reference material about transforming velocities 
     # and angular velocities between two independently moving, rotating, and oriented frames in 3D
 
@@ -126,7 +119,7 @@ def RK4_step(state, dt, accel_calculator):
 
 def state_from_orbit_properties(GM, center=[0,0,0], semimajor_axis=None, period=None, eccentricity=None, 
                                 periapsis=None, apoapsis=None, inclination=0., long_asc_node=0., 
-                                arg_periapsis=0., true_anomaly=0.):
+                                arg_periapsis=0., true_anomaly=0., body_orient=None, body_angvel=None):
     '''Generate a state vector from various orbital properties (consistent distance/time units, radians). 
     
     Use exactly one of these combos:
@@ -178,10 +171,70 @@ def state_from_orbit_properties(GM, center=[0,0,0], semimajor_axis=None, period=
     pos = pos_w @ R
     vel = vel_w @ R
 
-    state = make_zero_state()
-    state[POS] = pos + center
-    state[VEL] = vel
-    return state
+    return make_state(pos + center, body_orient, vel, body_angvel)
+
+def normalize_or_err(vec): 
+    '''Normalizes the given vector in-place to unit length. If it is zero, raise a ValueError instead.'''
+    vec = np.asarray(vec)
+    if (norm := np.linalg.norm(vec)) < np.finfo(vec.dtype).eps:
+        raise ValueError('Tried to normalize a zero vector')
+    else:
+        vec /= norm
+        return vec
+    
+def normalize(vec):
+    '''Normalizes the given vector in-place to unit length. If it is zero, produces np.nan.'''
+    vec = np.asarray(vec)
+    norm = np.linalg.norm(vec)
+    vec /= norm
+    return vec
+
+def heading_elevation_bank_FRB(ship_orient, WRT):
+    '''Get Euler or Tait-Bryan angles (radians) describing the ship's attitude 
+    using heading, elevation, and bank according to aircraft conventions:
+    * Ship fixed frame x, y, z directions are front, right, belly (FRB) respectively
+    * Right-handed intrinsic rotation associated with each axis is bank, elevation, heading respectively
+    * Intrinsic rotations are applied in z-y'-x'' order
+
+    Parameters:
+        ship_orient: Orientation quaternion of the ship.
+        WRT: 3x3 matrix representing the frame that would ilne up with the ship at [0, 0, 0] Euler angles. For example, a North-East-Down frame.
+    
+    Returns:
+        3-length numpy array containing the heading, elevation, and bank angles in radians.
+    
+    In gimbal lock, the indeterminate angles will be returned as nan.
+    '''
+    try:
+        FRB = quat.as_rotation_matrix(ship_orient)
+        R = WRT.T @ FRB # FRB in WRT frame
+        
+        # Source: https://en.wikipedia.org/wiki/Euler_angles
+        cos_elev = np.sqrt(1-R[2, 0]**2)
+        elevation = np.asin(-R[2, 0])
+        # heading = np.asin(R[1, 0]/cos_elev)
+        # bank = np.asin(R[2, 1]/cos_elev)
+
+        # My implementation: from thinking real hard
+        # Project the front-vector onto the north-east plane
+        # Heading is the angle of the projection from north
+        # heading = atan2(R_21, R_11) or atan2(R_12, R_11)
+        heading = np.atan2(R[1, 0], R[0, 0]) 
+        # at zero bank, ship's right-vector has no down-component
+        # at 90deg bank, ship's right-vector has maximum down-component = cos(elevation)
+        # at -90deg bank, ship's right-vector has minimum down-component = -cos(elevation) (is upward)
+        # therefore, R_32 = down-component of right vector = cos(elevation)sin(bank)
+        # Solve, sin(bank) = R_32 / cos(elevation)
+        # Same as wikipedia solution
+        # However, it is subject a bit to numerical errors. Let's fix that
+        R32_over_cos_elev = R[2, 1]/cos_elev
+        if 1. < abs(R32_over_cos_elev) and abs(R32_over_cos_elev) < 1.+ 1e-9:
+            R32_over_cos_elev = np.sign(R32_over_cos_elev)
+        bank = np.asin(R32_over_cos_elev)
+    except ValueError:
+        return np.full(3, np.nan)
+
+    return np.array([heading, elevation, bank])
 
 if __name__ == '__main__':
     # h = 19646.883e6

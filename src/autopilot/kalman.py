@@ -76,17 +76,13 @@ class KalmanFilter:
         assert np.ndim(self.x) == 1
         assert np.shape(self.P) == (np.size(self.x), np.size(self.x))
 
-        # Uninitialized values may be useful as members for history module to point to
-        self.A = np.asarray(A) if A is not None else np.full((self.x.size, self.x.size), np.nan)
-        self.Q = np.asarray(Q) if Q is not None else np.full_like(self.A, np.nan)
-        self.H = np.asarray(H) if H is not None else np.nan
-        self.R = np.asarray(R) if R is not None else np.nan
-        assert np.shape(self.A) == np.shape(self.P)
-        assert np.shape(self.Q) == np.shape(self.A)
+        if A is not None: self.A = np.asarray(A)
+        if Q is not None: self.Q = np.asarray(Q)
+        if H is not None: self.H = np.asarray(H) 
+        if R is not None: self.R = np.asarray(R)
 
         self.xp = self.x.copy()
         self.Pp = self.P.copy()
-        self.K = np.full_like(np.transpose(self.H), np.nan)
 
     def predict_step(self, A: np.ndarray = None, Q: np.ndarray = None):
         '''Update the filter by predicting the next state vector (advance one timestep).
@@ -162,7 +158,6 @@ class ExtendedKalmanFilter(KalmanFilter):
     
     def __init__(self, x, P, A=None, Q=None, H=None, R=None):
         super().__init__(x, P, A, Q, H, R)
-        self.zp = np.nan
 
     def predict_step(self, xp, A=None, Q=None):
         '''Update the filter by predicting the next state vector (advance one timestep).
@@ -210,7 +205,7 @@ class ExtendedKalmanFilter(KalmanFilter):
             self.H = np.asarray(H)
         if R is not None:
             self.R = np.asarray(R)
-
+    
         y = z - zp # innovation
         S = self.H @ self.Pp @ self.H.T + self.R # cov of innovation
         self.K = self.Pp @ self.H.T @ np.linalg.inv(S)
