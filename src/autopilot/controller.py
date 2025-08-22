@@ -4,14 +4,15 @@ import thruster
 import state_def as sd
 
 class Controller:
-    def __init__(self, thruster: thruster.Thruster):
-        self.thruster=thruster
+    '''Dummy/parent controller class with no implemented functionality.'''
+    def __init__(self, actuator: thruster.Thruster=None):
+        self.actuator=actuator
 
     def update(self, ship_state, dt):
         pass
 
-# Simple PID controller, can operate array-wise according to the shape parameter
 class PID(Controller):
+    '''Simple PID controller, can operate array-wise according to the shape parameter.'''
 
     def __init__(self, setpoint, gains, shape, thruster: thruster.Thruster):
         '''setpoint: vec3
@@ -38,11 +39,11 @@ class PID(Controller):
 
         self.output = p_term + i_term + d_term
 
-        self.thruster.command(self.output)
+        self.actuator.command(self.output)
     
-# xyz translational controller using body-fixed thrusters that can be on/off only
-# For use with Thrusters_Fixed_Binary_6
 class Binary_Controller_3(Controller):
+    '''xyz translational controller using body-fixed thrusters that can be on/off only.
+    For use with Thrusters_Fixed_Binary_6.'''
     
     def __init__(self, setpoint, accel, thruster: thruster.Thrusters_Fixed_Binary_6):
         '''acc: the acceleration produced by firing one thruster'''
@@ -95,4 +96,4 @@ class Binary_Controller_3(Controller):
                 # slow down
                 command[axis] = -np.sign(target_pos)
         
-        self.thruster.command(command)
+        self.actuator.command(command)

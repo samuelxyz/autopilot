@@ -10,17 +10,19 @@ import sensor
 
 class Ship:
 
-    def __init__(self, state, mass, inertia_matrix, controller: controller.Controller = None, 
+    def __init__(self, state, mass, inertia_matrix, controller_: controller.Controller = None, 
                  state_det_system: sensor.SensorSystem = None, 
                  actors: list[actor.Actor] = []):
         self.state = np.asarray(state) # current state, updated every timestep. q, qdot
         # self.state_history = ...
         self.mass = mass # something
         self.inertia_matrix = inertia_matrix # body frame
-        self.controller = controller
-        if self.controller is None:
-            self.controller = sensor.SensorSystem(self.state)
+        self.controller = controller_
+        if self.controller is None: 
+            self.controller = controller.Controller()
         self.state_det_system = state_det_system
+        if self.state_det_system is None:
+            self.controller = sensor.SensorSystem(self.state)
         self.actors = actors
         self.setpoint = np.ones(3)
         

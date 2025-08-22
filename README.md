@@ -6,7 +6,7 @@ This started as a sandbox project where I wanted to just play around with contro
 
 This graph shows an early test using an Extended Kalman Filter collecting data from (1) a continuously running gyroscope and (2) a star tracker that produces readings once per second. (I don't think real star trackers can easily take readings while the spacecraft has significant angular velocity but it's for the sake of the filter testing here)
 
-## Features & Ideas
+## Features & Feature Ideas
 
 * Simulation tools
   * History: a tool to monitor a set of values throughout the simulation and record them in numpy arrays
@@ -25,9 +25,9 @@ This graph shows an early test using an Extended Kalman Filter collecting data f
     * Sun sensor
     * Horizon sensor
     * Accelerometer
-    * Distance signal (distance reading from a known satellite, like a rangefinder or idealized single GPS signnal)
+    * Distance signal (distance reading from a known satellite, like a rangefinder or idealized single GPS signal)
     * Position sensor (essentially, the output of a GPS receiver system)
-* Actor: anything that applies linear or angular acceleration to the ship, such as gravity, aerodynamic drag, thrusters, etc
+* Actor: anything that applies linear or angular acceleration to the ship
   * Gravity
   * Aerodynamic drag
   * Thrusters

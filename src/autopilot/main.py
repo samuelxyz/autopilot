@@ -4,11 +4,8 @@ import quaternion as quat
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-import ship, thruster, controller, sensor
+import ship, thruster, controller, sensor, sim_tools, environment, actor, graph_tools
 import state_def as sd
-import sim_tools
-import environment
-import actor
 
 def scenario_ideal_binary_control():
     # thruster_pack = thruster.Thrusters_Floating_6()
@@ -58,13 +55,13 @@ def scenario_sensing():
             actor.GM_Earth, period=86400/2, eccentricity=0, inclination=1, 
             long_asc_node=2*np.pi*p/gps_planes, true_anomaly=2*np.pi*i/gps_n_per_plane
         ),
-        env_ECI.get_gravity_actors(), 0.1, 2, 1234)
-        for i in range(gps_n_per_plane) for p in range(gps_planes)
+        env_ECI.get_gravity_actors(), 0.1, 2, 1234
+        ) for i in range(gps_n_per_plane) for p in range(gps_planes)
     ]
     sds = sensor.SensorSystem_EKF(
         [gyro, star_tracker] + gps_sats, 
         sd.make_state(), # initial x estimate
-        np.diag([1e8, 1e8, 1e8, 1, 1, 1, 1, 1e5, 1e5, 1e5, 1, 1, 1]), # initial P - uninformative
+        np.diag([1e9, 1e9, 1e9, 1, 1, 1, 1, 1e6, 1e6, 1e6, 1, 1, 1]), # initial P - uninformative
         1e-7 * np.eye(sd.STATE_N) # if Q is zero then P tends to become singular in the Kalman filter
     )
 
@@ -84,43 +81,26 @@ def scenario_sensing():
         for sat in gps_sats:
             sat.update_simulation(dt)
     sim_tools.run_simulation(time, update_simulation, hist)
-
-    pos_est = hist['est_state'][:, sd.POS.start]
-    ang_est = hist['est_state'][:, sd.ANGVEL.start]
-    ang_sd = np.sqrt(hist['est_state_cov'][:, sd.ANGVEL.start, sd.ANGVEL.start])
-    ori_true = sd.get_orient(hist['true_state'])
-    ori_est = sd.get_orient(hist['est_state'])
-    ori_err_quat = quat.as_float_array(ori_true * ori_est.conj())
-    ori_err_angle = 2*np.acos(ori_err_quat[:, 0]) # radians from est to true
-    ori_component_sd = np.sqrt(
-        np.diagonal(hist['est_state_cov'][:, sd.ORIENT, sd.ORIENT], axis1=-2, axis2=-1))
-    ori_rss_z = np.linalg.norm(quat.as_float_array(ori_true - ori_est)/ori_component_sd, axis=-1)
-    ori_stdev = ori_err_angle/ori_rss_z
-    uncertainty_transparency = 0.2
+    grapher = graph_tools.Grapher(time, hist['true_state'], hist['est_state'], hist['est_state_cov'])
     
-    fig, axs = plt.subplots(3, sharex=True)
-    ax_pos, ax_ang, ax_ori = axs
+    fig, axs = plt.subplots(2, 2, sharex=True)
+    (ax_pos, ax_poserr), (ax_ang, ax_ori) = axs
+
     ax_pos.plot(time, hist['true_state'][:, sd.POS.start], label='True pos_x')
-    ax_pos.plot(time, pos_est, label='Est pos_x')
-    ax_pos.grid()
+    grapher.plot_est_component(ax_pos, sd.POS.start,'Est pos_x')
+    ax_pos.set_ylabel('Position (m)')
     ax_pos.legend()
 
+    grapher.plot_component_errs(ax_poserr, sd.POS, 'error_pos', list('xyz'))
+    ax_poserr.set_ylabel('Error (m)')
+
     ax_ang.plot(time, hist['true_state'][:, sd.ANGVEL.start], label='True omega_x')
-    ax_ang.plot(time, ang_est, label='Est omega_x')
-    ax_ang.fill_between(time, ang_est - ang_sd, ang_est + ang_sd, 
-                        alpha=uncertainty_transparency, color='C1')
-    ax_ang.set_ylabel('Angular velocity (rad/s)')
+    grapher.plot_est_component(ax_ang, sd.ANGVEL.start,'Est omega_x', 'C1')
+    ax_ang.set_ylabel('Angular velocity\n(rad/s)')
     ax_ang.legend()
-    ax_ang.grid()
     ax_ang.set_ylim(0.09, 0.11)
 
-    ax_ori.plot(time, ori_err_angle, label='True Orientation Error', color='C1')
-    ax_ori.fill_between(time, 0, ori_stdev, label='Est Orientation Uncertainty', 
-                        color='C1', alpha=uncertainty_transparency)
-    # ax_ori.plot(time, ori_err_quat[:, 1:], label='Error Quat Components')
-    ax_ori.grid()
-    ax_ori.set_xlabel('Time (s)')
-    ax_ori.set_ylabel('Orientation error')
+    grapher.plot_orientation_err(ax_ori, 'C1')
     ax_ori.set_ylim(0, 0.005)
     ax_ori.yaxis.set_major_formatter(tck.EngFormatter('rad'))
     ax_ori.legend()
