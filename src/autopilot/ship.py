@@ -22,7 +22,7 @@ class Ship:
             self.controller = controller.Controller()
         self.state_det_system = state_det_system
         if self.state_det_system is None:
-            self.controller = sensor.SensorSystem(self.state)
+            self.state_det_system = sensor.SensorSystem(self.state)
         self.actors = actors
         self.setpoint = np.ones(3)
         
@@ -56,4 +56,12 @@ class Ship:
         # world_inertia_matrix = rotation_matrix @ self.inertia_matrix @ rotation_matrix.T
         for actor in self.actors:
             result += actor.get_accel(state, self.mass, self.inertia_matrix)
+        return result
+
+    def calc_apparent_accel(self, state):
+        '''Like calc_accel but excludes gravity. Intended for reporting/logging purposes.'''
+        result = np.zeros((sd.QDOT_N,))
+        for actor in self.actors:
+            if actor.is_apparent:
+                result += actor.get_accel(state, self.mass, self.inertia_matrix)
         return result

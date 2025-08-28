@@ -33,6 +33,9 @@ class Sensor:
         self.reading = np.zeros(self.dim)
         return self.reading
     
+    def get_last_reading(self):
+        return self.reading
+    
     def cov(self, state):
         '''Estimate error covariance of the sensor reading at the given state. For use with Kalman filters.'''
         return self.cov_matrix
@@ -71,19 +74,19 @@ class Gyroscope(Sensor):
         super().__init__(3, constant_noise, randseed)
 
     def new_reading(self, true_state):
-        ideal_reading = quat.rotate_vectors(sd.get_orient(true_state).conj(), true_state[sd.ANGVEL])
+        ideal_reading = quat.rotate_vectors(sd.get_orient_q(true_state).conj(), true_state[sd.ANGVEL])
         reading = self.rng.multivariate_normal(ideal_reading, self.cov_matrix)
         self.reading = reading
         return reading
     
     def predict_reading(self, state):
-        return quat.rotate_vectors(sd.get_orient(state).conj(), state[sd.ANGVEL])
+        return quat.rotate_vectors(sd.get_orient_q(state).conj(), state[sd.ANGVEL])
     
     def linearized_model(self, state):
         # h(x) = matrix(orientation.conj) * angvel
         # therefore, H = dh/dx = matrix(orientation.conj) appropriately padded with zeros
         H = np.zeros((3, sd.STATE_N))
-        H[:, sd.ANGVEL] = quat.as_rotation_matrix(sd.get_orient(state).conj())
+        H[:, sd.ANGVEL] = quat.as_rotation_matrix(sd.get_orient_q(state).conj())
         return H
     
 class StarTracker(IntermittentSensor):
@@ -107,7 +110,7 @@ class StarTracker(IntermittentSensor):
         # Small rotation vector
         perturbation = self.rng.multivariate_normal([0, 0, 0], self.cov_matrix)
         perturbation_q = quat.from_rotation_vector(perturbation)
-        self.reading = perturbation_q * sd.get_orient(true_state)
+        self.reading = perturbation_q * sd.get_orient_q(true_state)
         return quat.as_float_array(self.reading)
     
     def predict_reading(self, state):
@@ -125,7 +128,7 @@ class StarTracker(IntermittentSensor):
         # So z = Q(Ew + [1, 0, 0, 0]) is a linearized version of the observation function
         E = np.zeros((4, 3))
         E[1:, :] = 0.5 * np.eye(3)
-        Q = sd.as_4x4_matrix(sd.get_orient(state))
+        Q = sd.as_4x4_matrix(sd.get_orient_q(state))
         QE = Q @ E
         return QE @ self.cov_matrix @ QE.T
         #  I hope this whole thing was at least remotely correct

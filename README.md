@@ -19,6 +19,10 @@ This graph shows an early test using an Extended Kalman Filter collecting data f
   * Sensor system: some method to turn sensor data into state estimates, Kalman filter, etc
     * Ideal/dummy system: simply returns the true state of the ship
     * EKF system: uses extended Kalman filter
+    * Gaussian sensor noise
+    * Sensor bias?
+      * Unbiasing/calibration methods?
+      * Extended state vector?
   * Sensor types:
     * Gyroscope
     * Star tracker

@@ -3,6 +3,7 @@ import numpy as np
 import quaternion as quat
 
 import state_def as sd
+import sim_tools
 
 class Grapher:
 
@@ -61,7 +62,7 @@ class Grapher:
 
         for i, name  in enumerate(component_names):
             ax.plot(self.time, err_components[:, i], label=f'{vec_label}_{name}')
-            ax.fill_between(self.time, 0, range_low[:, i], range_high[:, i], alpha=self.uncertainty_transparency)
+            ax.fill_between(self.time, range_low[:, i], range_high[:, i], alpha=self.uncertainty_transparency)
         
         ax.grid(True)
         ax.legend()
@@ -73,8 +74,8 @@ class Grapher:
         Parameters:
             ax: matplotlib axes object on which to plot
         '''
-        ori_true = sd.get_orient(self.true_state)
-        ori_est = sd.get_orient(self.est_state)
+        ori_true = sd.get_orient_q(self.true_state)
+        ori_est = sd.get_orient_q(self.est_state)
         ori_err_quat = quat.as_float_array(ori_true * ori_est.conj())
         ori_err_angle = 2*np.acos(ori_err_quat[:, 0]) # radians from est to true
 
@@ -90,3 +91,9 @@ class Grapher:
         ax.grid(True)
         ax.set_xlabel(self.time_label)
         ax.set_ylabel('Angle (rad)')
+
+def plot_flags(ax, hist:sim_tools.History):
+    for flags in hist.flags.values():
+        for flag in flags:
+            ax.axvline(flag.time, ymax=0.05, linestyle='-', color='k')
+            ax.text(flag.time, 0, f'  {flag.time:.1f}s: {flag.text}', size='small', rotation='vertical', ha='right')
