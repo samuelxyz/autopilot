@@ -42,3 +42,17 @@ This graph shows an early test using an Extended Kalman Filter collecting data f
   * PID controller
   * Binary (on/off) controller
   * Navigation strategies for given tasks (for example, Entry/Descent/Landing)
+
+## Setup
+
+I use a venv for this. 
+
+    $ python -m venv .venv
+    # unix/macos
+    $ source .venv/bin/activate
+    # alternatively, on windows
+    $ .venv\Scripts\activate
+
+Then,
+
+    python3 -m pip install --editable .

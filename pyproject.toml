@@ -13,3 +13,8 @@ authors = [{ name = "Tanamr" },]
 [project.urls]
 homepage = "https://github.com/samuelxyz/autopilot"
 repository = "https://github.com/samuelxyz/autopilot"
+
+[tool.ruff.lint]
+
+[tool.ruff.format]
+quote-style = "single"
