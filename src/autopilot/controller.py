@@ -1,7 +1,7 @@
 import numpy as np
 
-import thruster
-import state_def as sd
+from autopilot import thruster
+from autopilot import state_def as sd
 
 
 class Controller:

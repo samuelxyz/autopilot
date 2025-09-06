@@ -3,7 +3,7 @@ from collections import defaultdict
 import numpy as np
 import itertools
 
-import state_def as sd
+from autopilot import state_def as sd
 
 
 class Flag:
@@ -34,12 +34,18 @@ class History(dict):
                 ref, shape = info
             else:
                 ref = info
-                value = ref() if callable(ref) else ref
-                shape = np.shape(value)  # works for non-numpy numbers too
-                if shape == ():
+                try:
+                    value = ref() if callable(ref) else ref
+                except AttributeError:
                     print(
-                        f'Could not identify shape to use for {ref} when creating history tracker - specify it in values_to_track as "name": (item, shape)'
+                        f'Could not access shape to use for {ref} when creating history tracker'
+                        ' - specify it in values_to_track as "name": (item, shape)'
                     )
+                    raise
+                shape = np.shape(value)  # works for non-numpy numbers too
+                if len(shape) == 0:
+                    shape = (1,)
+
             self.refs[name] = (ref, callable(ref))
             self[name] = np.full((num_steps,) + shape, np.nan)
 

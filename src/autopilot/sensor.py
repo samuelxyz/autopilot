@@ -4,8 +4,8 @@
 
 import numpy as np
 import quaternion as quat
-import kalman
-import state_def as sd
+from autopilot import kalman
+from autopilot import state_def as sd
 
 
 class Sensor:

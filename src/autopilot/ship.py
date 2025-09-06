@@ -3,10 +3,10 @@
 # RK4 time-stepping
 
 import numpy as np
-import actor
-import controller
-import state_def as sd
-import sensor
+from autopilot import actor
+from autopilot import controller
+from autopilot import state_def as sd
+from autopilot import sensor
 
 
 class Ship:

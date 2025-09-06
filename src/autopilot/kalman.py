@@ -1,5 +1,5 @@
 import numpy as np
-import state_def as sd
+from autopilot import state_def as sd
 
 
 def make_state_transition_matrix(dt, state):
@@ -225,7 +225,7 @@ class ExtendedKalmanFilter(KalmanFilter):
 
         y = z - zp  # innovation
         S = self.H @ self.Pp @ self.H.T + self.R  # cov of innovation
-        self.K = self.Pp @ self.H.T @ np.linalg.inv(S)
+        self.K = self.Pp @ self.H.T @ np.linalg.inv(S)  # NxM
         self.x = self.xp + self.K @ y
         self.P = self.Pp - self.K @ self.H @ self.Pp
 
@@ -237,6 +237,7 @@ if __name__ == '__main__':
     import sim_tools
 
     def kalman_test():
+        """Sine following test, N=2, M=2"""
         num_steps = 100
         state_dims = 2
         t_max = 10
@@ -260,20 +261,20 @@ if __name__ == '__main__':
             [0, 0], R, num_steps
         )
 
-        kalman_filter = KalmanFilter(x_guess, P_guess, Q, H, R)
+        kalman_filter = KalmanFilter(x_guess, P_guess, Q=Q, H=H, R=R)
         hist = sim_tools.History(
             num_steps,
             {
                 'x': lambda: kalman_filter.x,
                 'P': lambda: kalman_filter.P,
-                'K': lambda: kalman_filter.K,
+                'K': (lambda: kalman_filter.K, (2, 2)),
             },
         )
         A = np.eye(2)
-        for i in range(num_steps):
+        for i, t in enumerate(time):
             kalman_filter.predict_step(A)
             kalman_filter.process_observation(noisy_observations[i])
-            hist.save_timestep(i)
+            hist.save_timestep(i, t)
 
         fig, axs = plt.subplots(3, sharex=True)
         for i, ax in enumerate(axs[:2]):

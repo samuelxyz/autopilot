@@ -2,8 +2,8 @@ from matplotlib.axes import Axes
 import numpy as np
 import quaternion as quat
 
-import state_def as sd
-import sim_tools
+from autopilot import state_def as sd
+from autopilot import sim_tools
 
 
 class Grapher:

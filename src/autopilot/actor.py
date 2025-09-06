@@ -3,7 +3,7 @@
 import numpy as np
 import quaternion as quat
 
-import state_def as sd
+from autopilot import state_def as sd
 
 gravitational_constant_si = 6.6743e-11
 GM_Earth = 3.98600442e14

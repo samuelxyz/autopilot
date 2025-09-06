@@ -1,8 +1,8 @@
 import numpy as np
 import quaternion as quat
 
-import state_def as sd
-import actor
+from autopilot import state_def as sd
+from autopilot import actor
 
 
 class Body:

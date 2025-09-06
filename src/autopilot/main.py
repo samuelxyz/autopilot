@@ -3,15 +3,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patch
 import matplotlib.ticker as tck
 
-import ship
-import thruster
-import controller
-import sensor
-import sim_tools
-import environment
-import actor
-import graph_tools
-import state_def as sd
+from autopilot import ship
+from autopilot import thruster
+from autopilot import controller
+from autopilot import sensor
+from autopilot import sim_tools
+from autopilot import environment
+from autopilot import actor
+from autopilot import graph_tools
+from autopilot import state_def as sd
 
 
 def scenario_ideal_binary_control():
