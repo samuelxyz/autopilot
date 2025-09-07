@@ -172,8 +172,15 @@ def scenario_EDL():
 
     env_ECI = environment.make_environment_ECI()
     earth: environment.Earth = env_ECI.bodies[0]
+    true_anomaly = -np.pi / 2
+    initial_longitude = -np.pi / 2
+    # arg_periapsis + true_anomaly == initial_longitude
     ship_state = sd.state_from_orbit_properties(
-        actor.GM_Earth, periapsis=6441e3, apoapsis=6441e3, arg_periapsis=-np.pi / 2
+        actor.GM_Earth,
+        periapsis=6426e3,
+        apoapsis=6456e3,
+        arg_periapsis=initial_longitude - true_anomaly,
+        true_anomaly=true_anomaly,
     )
     NED_vel = earth.get_airspeed_vector_NED(ship_state)
     vel_heading = np.atan2(NED_vel[1], NED_vel[0])
@@ -188,7 +195,6 @@ def scenario_EDL():
     drag_eq = actor.Drag_Equation(
         capsule_drag_coeff, cs_area, earth.get_atmo_density, earth.get_airspeed_vector
     )
-    # TODO: make it depend on angle of attack in some fashion
     lift_eq = actor.Lift_Equation(
         capsule_drag_coeff * 0.2,
         cs_area,
@@ -234,8 +240,16 @@ def scenario_EDL():
             'angle_of_attack': lambda: earth.get_angle_of_attack(ship_.state),
         },
     )
+
+    def aoa_function(a):
+        # crazy feel-based definition
+        # Maximum is 0.5exp(-0.5) ~ 0.303 at aoa=0.5
+        return a * np.exp(-2 * a**2)
+
     chutes_deployed = False
     chutes_opened_time = None
+    chute_trigger_altitude = 4e3
+    chute_opening_pd = 30
 
     # chute_easing_function = lambda x: np.sin(x*np.pi/2)**2 if x < 1 else 1
     def chute_easing_function(x):
@@ -250,12 +264,6 @@ def scenario_EDL():
         time_now = step_start_time + dt
 
         aoa = earth.get_angle_of_attack(ship_.state)
-
-        def aoa_function(a):
-            # crazy feel-based definition
-            # Maximum is 0.5exp(-0.5) ~ 0.303 at aoa=0.5
-            return a * np.exp(-2 * a**2)
-
         lift_eq.lift_coeff = aoa_function(aoa) * capsule_drag_coeff
 
         density = earth.get_atmo_density(ship_.state)
@@ -272,9 +280,10 @@ def scenario_EDL():
 
         nonlocal chutes_deployed
         nonlocal chutes_opened_time
-        chute_opening_pd = 30
 
-        if earth.get_altitude(ship_.state) < 3e3 and not chutes_deployed:
+        if (
+            earth.get_altitude(ship_.state) < chute_trigger_altitude
+        ) and not chutes_deployed:
             hist.add_flag(
                 sim_tools.Flag(
                     f'Parachute deploy started, will take {chute_opening_pd}s', time_now
@@ -302,12 +311,13 @@ def scenario_EDL():
     hist.print_flags()
 
     fig, axs = plt.subplots(2, 3, figsize=(15, 8))
-    (ax_prof, ax_altmach, ax_orient), (ax_alttemp, ax_alttime, _) = axs
+    (ax_traj_xy, ax_alttime, ax_altmach), (ax_traj_xz, ax_orient, ax_alttemp) = axs
     for axrow in axs:
         for ax in axrow:
             ax.grid(True)
+
     markevery = 100
-    ax_prof.plot(
+    ax_traj_xy.plot(
         hist['true_state'][:, sd.POS.start],
         hist['true_state'][:, sd.POS.start + 1],
         'x',
@@ -316,10 +326,10 @@ def scenario_EDL():
         markevery=60,
         color='tab:red',
     )
-    ax_prof.set_xlabel('Position x')
-    ax_prof.set_ylabel('Position y')
-    ax_prof.set_aspect('equal')
-    earth_ellipse = patch.Ellipse(
+    ax_traj_xy.set_xlabel('Position x')
+    ax_traj_xy.set_ylabel('Position y')
+    ax_traj_xy.set_aspect('equal')
+    earth_ellipse_xy = patch.Ellipse(
         (
             0,
             0,
@@ -328,16 +338,45 @@ def scenario_EDL():
         2 * 6371e3,
         color='tab:blue',
     )
-    earth_ellipse.set_clip_box(ax_prof.bbox)
-    ax_prof.add_artist(earth_ellipse)
+    earth_ellipse_xy.set_clip_box(ax_traj_xy.bbox)
+    ax_traj_xy.add_artist(earth_ellipse_xy)
     km_formatter = tck.FuncFormatter(lambda x, pos: f'{int(x / 1000)} km')
-    ax_prof.xaxis.set_major_formatter(km_formatter)
-    ax_prof.yaxis.set_major_formatter(km_formatter)
-    ax_prof.tick_params('x', rotation=90)
-    ax_prof.tick_params('y', rotation=45)
-    ax_prof.set_title(
+    ax_traj_xy.xaxis.set_major_formatter(km_formatter)
+    ax_traj_xy.yaxis.set_major_formatter(km_formatter)
+    ax_traj_xy.tick_params('x', rotation=90)
+    ax_traj_xy.tick_params('y', rotation=45)
+    ax_traj_xy.set_title(
         f'Trajectory - Marks every {markevery * sim_duration / num_steps}s'
     )
+
+    ax_traj_xz.plot(
+        hist['true_state'][:, sd.POS.start],
+        hist['true_state'][:, sd.POS.start + 2],
+        'x',
+        linestyle='-',
+        label='Trajectory',
+        markevery=60,
+        color='tab:red',
+    )
+    ax_traj_xz.set_xlabel('Position x')
+    ax_traj_xz.set_ylabel('Position z')
+    ax_traj_xz.set_ylim(-1000e3, 1000e3)
+    ax_traj_xz.set_aspect('equal')
+    earth_ellipse_xz = patch.Ellipse(
+        (
+            0,
+            0,
+        ),
+        2 * 6371e3,
+        2 * 6371e3,
+        color='tab:blue',
+    )
+    earth_ellipse_xz.set_clip_box(ax_traj_xz.bbox)
+    ax_traj_xz.add_artist(earth_ellipse_xz)
+    ax_traj_xz.xaxis.set_major_formatter(km_formatter)
+    ax_traj_xz.yaxis.set_major_formatter(km_formatter)
+    ax_traj_xz.tick_params('x', rotation=90)
+    ax_traj_xz.tick_params('y', rotation=45)
 
     ax_altmach.plot(hist['mach'], hist['altitude'])
     ax_altmach.tick_params(axis='x', labelcolor='C0')
@@ -392,7 +431,7 @@ def scenario_EDL():
     ax_orient.plot(time, hist['HEB'][:, 2], label='Bank (0 is level)')
     ax_orient.plot(time, hist['angle_of_attack'], label='Angle of Attack')
     ax_orient.set_xlabel('Elapsed Time')
-    ax_orient.set_ylabel('Attitude (rad)')
+    ax_orient.set_ylabel('Orientation Angles (rad)')
     ax_orient.set_xlim(0)
     ax_orient.legend(title='Note: Heat shield normal is "forward"')
 

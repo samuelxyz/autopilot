@@ -2,9 +2,18 @@
 
 This started as a sandbox project where I wanted to just play around with control systems and sensors. I am now using it as an exercise to learn and implement Kalman filtering for a spacecraft navigation system.
 
+---
+
 ![](assets/EKF_Test_Gyro_StarTracker.png)
 
-This graph shows an early test using an Extended Kalman Filter collecting data from (1) a continuously running gyroscope and (2) a star tracker that produces readings once per second. (I don't think real star trackers can easily take readings while the spacecraft has significant angular velocity but it's for the sake of the filter testing here)
+The above graph shows an early test using an Extended Kalman Filter collecting data from (1) a continuously running gyroscope and (2) a star tracker that produces readings once per second. (I don't think real star trackers can easily take readings while the spacecraft has significant angular velocity but it's for the sake of the filter testing here)
+
+---
+
+![](assets/Atmospheric_Entry.png)
+
+Here is a (simplified) Earth atmospheric entry and landing simulation. The next step is to add an attitude control system and try some S-turns!
+
 
 ## Features & Feature Ideas
 
@@ -47,11 +56,14 @@ This graph shows an early test using an Extended Kalman Filter collecting data f
 
 I use a venv for this. 
 
-    $ python -m venv .venv
-    # unix/macos
-    $ source .venv/bin/activate
-    # alternatively, on windows
-    $ .venv\Scripts\activate
+    cd autopilot
+    python -m venv .venv
+    
+    # Unix/MacOS:
+    source .venv/bin/activate
+    
+    # alternatively, on Windows:
+    .venv\Scripts\activate
 
 Then,
 
