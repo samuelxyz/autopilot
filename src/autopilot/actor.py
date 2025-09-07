@@ -1,7 +1,6 @@
 # Actor
 # Something that could apply forces on the ship: thrusters, gravity, aerodynamics, etc
 import numpy as np
-import quaternion as quat
 
 from autopilot import state_def as sd
 
@@ -68,7 +67,7 @@ class Lift_Equation(Actor):
     def get_accel(self, state, mass, inertia_matrix):
         v = self.state_to_airspeed(state)
         rho = self.state_to_density(state)
-        belly_dir = quat.rotate_vectors(sd.get_orient_q(state), (0, 0, 1))
+        belly_dir = sd.rotate_vector(sd.get_orient_q(state), (0, 0, 1))
         try:
             freestream_right_dir = sd.normalize_or_err(np.cross(belly_dir, v))
             lift_dir = sd.normalize_or_err(np.cross(freestream_right_dir, v))

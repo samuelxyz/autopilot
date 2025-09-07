@@ -1,5 +1,4 @@
 import numpy as np
-import quaternion as quat
 
 from autopilot import actor
 from autopilot import state_def as sd
@@ -49,5 +48,5 @@ class Thrusters_Fixed_Binary_6(Thruster):
 
     def get_accel(self, state, mass, local_inertia_matrix):
         result = np.zeros(sd.QDOT_N)
-        result[sd.LIN] = quat.rotate_vectors(sd.get_orient_q(state), self.thrusts)
+        result[sd.LIN] = sd.rotate_vector(sd.get_orient_q(state), self.thrusts)
         return result

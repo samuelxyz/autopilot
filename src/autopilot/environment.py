@@ -33,7 +33,7 @@ class Body:
 
     def get_latlong_radians(self, ship_state):
         r_sys = ship_state[sd.POS] - self.state[sd.POS]
-        r_body = quat.rotate_vectors(self.get_body_fixed_frame_q().conj(), r_sys)
+        r_body = sd.rotate_vector(self.get_body_fixed_frame_q().conj(), r_sys)
         lat = np.asin(r_body[2] / np.linalg.norm(r_body))
         long = np.atan2(r_body[1], r_body[0])
         return np.asarray((lat, long))
@@ -102,7 +102,7 @@ class Body:
         airspeed vector and its forward (x, along the nose) vector projected onto its
         forward-belly (x-z) plane."""
         airspeed_world = self.get_airspeed_vector(ship_state)
-        airspeed_body = quat.rotate_vectors(
+        airspeed_body = sd.rotate_vector(
             sd.get_orient_q(ship_state).conj(), airspeed_world
         )
         aoa = np.atan2(airspeed_body[2], airspeed_body[0])

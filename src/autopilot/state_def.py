@@ -59,6 +59,13 @@ def as_4x4_matrix(quat):
     ]) # fmt: on
 
 
+def rotate_vector(rot_q, vec):
+    """Apply quaternion to a single vector; should be faster than quat.rotate_vectors(q, v)."""
+    qv = quat.from_vector_part(vec)
+    rotated_qv = rot_q * qv * rot_q.conj()
+    return quat.as_vector_part(rotated_qv)
+
+
 # Action / qdot / ddt(state) elements
 #   lin ----- | ang ----- |
 #   0   1   2   3   4   5

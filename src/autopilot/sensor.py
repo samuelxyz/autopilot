@@ -95,7 +95,7 @@ class Gyroscope(Sensor):
         super().__init__(3, constant_noise, randseed)
 
     def new_reading(self, true_state):
-        ideal_reading = quat.rotate_vectors(
+        ideal_reading = sd.rotate_vector(
             sd.get_orient_q(true_state).conj(), true_state[sd.ANGVEL]
         )
         reading = self.rng.multivariate_normal(ideal_reading, self.cov_matrix)
@@ -103,7 +103,7 @@ class Gyroscope(Sensor):
         return reading
 
     def predict_reading(self, state):
-        return quat.rotate_vectors(sd.get_orient_q(state).conj(), state[sd.ANGVEL])
+        return sd.rotate_vector(sd.get_orient_q(state).conj(), state[sd.ANGVEL])
 
     def linearized_model(self, state):
         # h(x) = matrix(orientation.conj) * angvel
