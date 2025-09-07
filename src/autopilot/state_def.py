@@ -252,7 +252,7 @@ def normalize(vec):
     return vec
 
 
-def heading_elevation_bank_FRB(ship_orient_q, WRT):
+def get_heading_elevation_bank_FRB(ship_orient_q, WRT_mat):
     """Get Euler or Tait-Bryan angles (radians) describing the ship's attitude
     using heading, elevation, and bank according to aircraft conventions:
     * Ship fixed frame x, y, z directions are front, right, belly (FRB) respectively
@@ -261,7 +261,7 @@ def heading_elevation_bank_FRB(ship_orient_q, WRT):
 
     Parameters:
         ship_orient_q: Orientation quaternion of the ship.
-        WRT: 3x3 matrix representing the frame that would ilne up with the ship at [0, 0, 0] Euler angles. For example, a North-East-Down frame.
+        WRT_mat: 3x3 matrix representing the frame that would ilne up with the ship at [0, 0, 0] Euler angles. For example, a North-East-Down frame.
 
     Returns:
         3-length numpy array containing the heading, elevation, and bank angles in radians.
@@ -270,7 +270,7 @@ def heading_elevation_bank_FRB(ship_orient_q, WRT):
     """
 
     FRB = quat.as_rotation_matrix(ship_orient_q)
-    R = WRT.T @ FRB  # FRB in WRT frame
+    R = WRT_mat.T @ FRB  # FRB in WRT frame
 
     # Source: https://en.wikipedia.org/wiki/Euler_angles
     cos_elev = np.sqrt(1 - R[2, 0] ** 2)
@@ -296,6 +296,38 @@ def heading_elevation_bank_FRB(ship_orient_q, WRT):
     bank = np.asin(R32_over_cos_elev)
 
     return np.array([heading, elevation, bank])
+
+
+def make_orientation_q_FRB(heading_elevation_bank, WRT_mat):
+    """Make a quaternion that has the given heading, elevation, and bank angles
+    relative to the given WRT frame. Uses aircraft conventions:
+    * Ship fixed frame x, y, z directions are front, right, belly (FRB) respectively
+    * Right-handed intrinsic rotation associated with each axis is bank, elevation, heading respectively
+    * Intrinsic rotations are applied in z-y'-x'' order
+
+    Parameters:
+        heading_elevation_bank: length-3 sequence containing heading, elevation, and bank angle in radians.
+        WRT_mat: 3x3 rotation matrix representing the frame that would line up with the ship
+            at [0, 0, 0] Euler angles. For example, a North-East-Down frame.
+
+    Returns:
+        Unit quaternion representing the specified orientation.
+    """
+    s = np.sin(0.5 * np.asarray(heading_elevation_bank))
+    c = np.cos(0.5 * np.asarray(heading_elevation_bank))
+
+    # See https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+    q_rel = quat.from_float_array(
+        (
+            c[2] * c[1] * c[0] + s[2] * s[1] * s[0],
+            s[2] * c[1] * c[0] - c[2] * s[1] * s[0],
+            c[2] * s[1] * c[0] + s[2] * c[1] * s[0],
+            c[2] * c[1] * s[0] - s[2] * s[1] * c[0],
+        )
+    )
+
+    result = quat.from_rotation_matrix(WRT_mat) * q_rel
+    return np.normalized(result)
 
 
 if __name__ == '__main__':

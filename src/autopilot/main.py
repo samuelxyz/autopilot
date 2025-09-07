@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patch
 import matplotlib.ticker as tck
+import quaternion as quat
 
 from autopilot import ship
 from autopilot import thruster
@@ -174,16 +175,33 @@ def scenario_EDL():
     ship_state = sd.state_from_orbit_properties(
         actor.GM_Earth, periapsis=6441e3, apoapsis=6441e3, arg_periapsis=-np.pi / 2
     )
-    cs_area = 20  # m^2
-    base_drag = 0.3
-    drag_eq = actor.Drag_Equation(
-        base_drag, cs_area, earth.get_atmo_density, earth.get_airspeed_vector
+    NED_vel = earth.get_airspeed_vector_NED(ship_state)
+    vel_heading = np.atan2(NED_vel[1], NED_vel[0])
+    orient_q = earth.make_quat_from_euler_angles_NED(
+        (vel_heading, 0.25, 0), ship_state[sd.POS]
     )
+    ship_state[sd.ORIENT] = quat.as_float_array(orient_q)
+    r_vec = ship_state[sd.POS] - earth.state[sd.POS]
+    ship_state[sd.ANGVEL] = np.cross(r_vec, ship_state[sd.VEL]) / np.dot(r_vec, r_vec)
+    cs_area = 20  # m^2
+    capsule_drag_coeff = 0.25
+    drag_eq = actor.Drag_Equation(
+        capsule_drag_coeff, cs_area, earth.get_atmo_density, earth.get_airspeed_vector
+    )
+    # TODO: make it depend on angle of attack in some fashion
+    lift_eq = actor.Lift_Equation(
+        capsule_drag_coeff * 0.2,
+        cs_area,
+        earth.get_atmo_density,
+        earth.get_airspeed_vector,
+    )
+    ship_mass = 10e3
+    ship_inertia = 40e3 * np.eye(3)
     ship_ = ship.Ship(
         ship_state,
-        10e3,
-        40e3 * np.eye(3),
-        actors=env_ECI.get_gravity_actors() + [drag_eq],
+        ship_mass,
+        ship_inertia,
+        actors=env_ECI.get_gravity_actors() + [drag_eq, lift_eq],
     )
     heat_shield_mcp = 4e3  # J/K
     heat_shield_area = cs_area
@@ -206,6 +224,14 @@ def scenario_EDL():
             'radiative_flux': lambda: radiative_flux,
             'heat_shield_temp': lambda: heat_shield_temp,
             'density': lambda: earth.get_atmo_density(ship_.state),
+            'lift': lambda: lift_eq.get_accel(
+                ship_.state, ship_.mass, ship_.inertia_matrix
+            ),
+            'drag': lambda: drag_eq.get_accel(
+                ship_.state, ship_.mass, ship_.inertia_matrix
+            ),
+            'HEB': lambda: earth.get_euler_angles_NED(ship_.state),
+            'angle_of_attack': lambda: earth.get_angle_of_attack(ship_.state),
         },
     )
     chutes_deployed = False
@@ -222,6 +248,15 @@ def scenario_EDL():
 
         ship_.update(step_start_time, dt)
         time_now = step_start_time + dt
+
+        aoa = earth.get_angle_of_attack(ship_.state)
+
+        def aoa_function(a):
+            # crazy feel-based definition
+            # Maximum is 0.5exp(-0.5) ~ 0.303 at aoa=0.5
+            return a * np.exp(-2 * a**2)
+
+        lift_eq.lift_coeff = aoa_function(aoa) * capsule_drag_coeff
 
         density = earth.get_atmo_density(ship_.state)
         heat_transfer_coeff = 3 * np.sqrt(
@@ -251,7 +286,7 @@ def scenario_EDL():
             easing_function_x = (time_now - chutes_opened_time) / chute_opening_pd
             eased_proportion = chute_easing_function(easing_function_x)
             drag_eq.cs_area = cs_area * (1 + eased_proportion * 100)
-            drag_eq.drag_coeff = base_drag + 0.5 * eased_proportion
+            drag_eq.drag_coeff = capsule_drag_coeff + 0.5 * eased_proportion
 
         if (b := env_ECI.check_for_body_collisions(ship_.state)) is not None:
             hist.add_flag(
@@ -266,8 +301,8 @@ def scenario_EDL():
     sim_tools.run_simulation(time, update_simulation, hist)
     hist.print_flags()
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
-    (ax_prof, ax_altmach), (ax_alttemp, ax_alttime) = axs
+    fig, axs = plt.subplots(2, 3, figsize=(15, 8))
+    (ax_prof, ax_altmach, ax_orient), (ax_alttemp, ax_alttime, _) = axs
     for axrow in axs:
         for ax in axrow:
             ax.grid(True)
@@ -351,6 +386,15 @@ def scenario_EDL():
     ax_alttime.yaxis.set_major_formatter(tck.EngFormatter('m'))
     ax_alttime.set_xlim(0)
     ax_alttime.set_ylim(0)
+
+    ax_orient.plot(time, hist['HEB'][:, 0], label='Heading (0 is North)')
+    ax_orient.plot(time, hist['HEB'][:, 1], label='Elevation (0 is level)')
+    ax_orient.plot(time, hist['HEB'][:, 2], label='Bank (0 is level)')
+    ax_orient.plot(time, hist['angle_of_attack'], label='Angle of Attack')
+    ax_orient.set_xlabel('Elapsed Time')
+    ax_orient.set_ylabel('Attitude (rad)')
+    ax_orient.set_xlim(0)
+    ax_orient.legend(title='Note: Heat shield normal is "forward"')
 
     fig.tight_layout()
     plt.show()

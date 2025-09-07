@@ -9,9 +9,10 @@ from autopilot import state_def as sd
 
 
 class Sensor:
-    def __init__(self, dim, constant_noise, randseed):
-        """Base class for an arbitrary sensor ready to hook into an Extended Kalman Filter.
+    """Base class for an arbitrary sensor ready to hook into an Extended Kalman Filter."""
 
+    def __init__(self, dim, constant_noise, randseed):
+        """
         Parameters:
             dim: Number of dimensions of the sensor output
             constant_noise: Standard deviation of noise in sensor output. Can be scalar, vector, or matrix
@@ -60,6 +61,13 @@ class IntermittentSensor(Sensor):
     """Base class for a sensor that can only sense at specified intervals."""
 
     def __init__(self, dim, constant_noise, sensing_interval, randseed):
+        """
+        Parameters:
+            dim: Number of dimensions of the sensor output
+            constant_noise: Standard deviation of noise in sensor output. Can be scalar, vector, or matrix
+            sensing_interval: Time interval between when readings are available
+            randseed: Seed for noise generator, used for reproducibility
+        """
         super().__init__(dim, constant_noise, randseed)
         self.sensing_interval = sensing_interval
         self.last_sense_time = 0
@@ -117,8 +125,13 @@ class StarTracker(IntermittentSensor):
     H[:, sd.ORIENT] = np.eye(4)
 
     def __init__(self, constant_noise, sensing_interval=0.0, randseed=None):
-        """Special case here, the noise represents a random rotation vector (3)
-        instead of quat components (4). Still accepts scalar, vector, or matrix.
+        """
+        Parameters:
+            constant_noise: Standard deviation of noise in sensor output. Special case here,
+                the noise represents a random rotation vector (3)
+                instead of quat components (4). Still accepts scalar, vector, or matrix.
+            sensing_interval: Time interval between when readings are available
+            randseed: Seed for noise generator, used for reproducibility
         """
         super().__init__(4, constant_noise, sensing_interval, randseed)
         self.cov_matrix = self.cov_matrix[:3, :3]
@@ -185,6 +198,13 @@ class DistanceSignal(IntermittentSensor):
         sensing_interval,
         randseed=None,
     ):
+        """
+        Parameters:
+            satellite_state: The state vector of the GPS satellite
+            satellite_actors: Actors on the satellite, typically an instance of actor.Gravity
+            constant_noise: Standard deviation of noise in sensor output. Scalar.
+            randseed: Seed for noise generator, used for reproducibility
+        """
         super().__init__(1, constant_noise, sensing_interval, randseed)
         self.satellite_state = satellite_state
         self.satellite_actors = satellite_actors
@@ -223,6 +243,8 @@ class DistanceSignal(IntermittentSensor):
 class PositionSensor(IntermittentSensor):
     """An idealized sensor that simply outputs the ship's absolute position.
     Can be thought of as the output of a more sophisticated GPS receiver subsystem."""
+
+    pass  # TODO
 
 
 class Radar(Sensor):

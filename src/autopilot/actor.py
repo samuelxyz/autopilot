@@ -36,12 +36,14 @@ class Gravity(Actor):
 
 
 class Drag_Equation(Actor):
+    """Actor that simulates simple aerodynamic drag parallel to airspeed and scaling with its square."""
+
     def __init__(self, drag_coeff, cs_area, state_to_density, state_to_airspeed):
         super().__init__()
         self.drag_coeff = drag_coeff
         self.cs_area = cs_area  # cross section
-        self.state_to_density = state_to_density  # callable(position)
-        self.state_to_airspeed = state_to_airspeed  # callable(position)
+        self.state_to_density = state_to_density
+        self.state_to_airspeed = state_to_airspeed
 
     def get_accel(self, state, mass, inertia_matrix):
         v = self.state_to_airspeed(state)
@@ -51,21 +53,26 @@ class Drag_Equation(Actor):
 
 
 class Lift_Equation(Actor):
+    """Actor that simulates simple aerodynamic lift perpendicular to airspeed and scaling with its square.
+    Lift is in the plane spanned by the airspeed and ship z-vector (belly direction).
+    You will probably want to manually update the lift coefficient.
+    """
+
     def __init__(self, lift_coeff, wing_area, state_to_density, state_to_airspeed):
         super().__init__()
         self.lift_coeff = lift_coeff
         self.wing_area = wing_area  # cross section
-        self.state_to_density = state_to_density  # callable(position)
-        self.state_to_airspeed = state_to_airspeed  # callable(position)
+        self.state_to_density = state_to_density
+        self.state_to_airspeed = state_to_airspeed
 
     def get_accel(self, state, mass, inertia_matrix):
         v = self.state_to_airspeed(state)
         rho = self.state_to_density(state)
-        belly_dir = quat.rotate_vectors(state.conj(), (0, 0, 1))
+        belly_dir = quat.rotate_vectors(sd.get_orient_q(state), (0, 0, 1))
         try:
             freestream_right_dir = sd.normalize_or_err(np.cross(belly_dir, v))
             lift_dir = sd.normalize_or_err(np.cross(freestream_right_dir, v))
         except ValueError:
             return sd.make_qdot()
-        force = 0.5 * rho * v * self.lift_coeff * self.wing_area * lift_dir
+        force = 0.5 * rho * np.dot(v, v) * self.lift_coeff * self.wing_area * lift_dir
         return sd.make_qdot(lin=force / mass)

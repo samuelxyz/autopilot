@@ -70,7 +70,18 @@ class Body:
         In gimbal lock, the indeterminate angles will be returned as nan.
         """
         NED = self.get_NED_frame_R(ship_state[sd.POS])
-        return sd.heading_elevation_bank_FRB(sd.get_orient_q(ship_state), NED)
+        return sd.get_heading_elevation_bank_FRB(sd.get_orient_q(ship_state), NED)
+
+    def make_quat_from_euler_angles_NED(self, heading_elevation_bank, ship_pos):
+        """Make an orientation quaternion matching the given Euler or Tait-Bryan angles (radians)
+        describing the ship's attitude using heading, elevation, and bank according to aircraft conventions:
+        * Reference frame x, y, z vectors are local North, East, Down directions respectively.
+
+        Raises sd.ReferenceFrameError if the NED frame is indeterminate (ship is on this body's polar axis).
+        """
+        NED_frame = self.get_NED_frame_R(ship_pos)
+        result = sd.make_orientation_q_FRB(heading_elevation_bank, NED_frame)
+        return result
 
     def get_airspeed_vector(self, ship_state):
         """Returns the ship's velocity vector relative to this body in system reference frame (probably ICRF)."""
@@ -85,6 +96,17 @@ class Body:
         """
         NED = self.get_NED_frame_R(ship_state[sd.POS])
         return np.matvec(NED.T, self.get_airspeed_vector(ship_state))
+
+    def get_angle_of_attack(self, ship_state):
+        """Returns the angle of attack in radians; that is, the angle between the ship's
+        airspeed vector and its forward (x, along the nose) vector projected onto its
+        forward-belly (x-z) plane."""
+        airspeed_world = self.get_airspeed_vector(ship_state)
+        airspeed_body = quat.rotate_vectors(
+            sd.get_orient_q(ship_state).conj(), airspeed_world
+        )
+        aoa = np.atan2(airspeed_body[2], airspeed_body[0])
+        return aoa
 
 
 # Simplified atmospheric property calculations
