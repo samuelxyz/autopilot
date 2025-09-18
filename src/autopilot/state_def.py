@@ -21,10 +21,10 @@ VELS = slice(7, 13)
 # Low-level functions for manipulating states
 
 
-def make_state(pos=0.0, orient=None, vel=0.0, angvel=0.0):
+def make_state(pos=0.0, orient_q=None, vel=0.0, angvel=0.0):
     state = np.empty(STATE_N)
     state[POS] = pos
-    state[ORIENT] = orient if orient is not None else (1, 0, 0, 0)
+    state[ORIENT] = orient_q if orient_q is not None else (1, 0, 0, 0)
     state[VEL] = vel
     state[ANGVEL] = angvel
     return state
@@ -88,19 +88,18 @@ def change_to_frame(frame: np.array, other: np.array):
     """Returns a state vector describing `other` from the point of view of `frame`.
     Parameters and return values are all state vectors.
     """
-    # This was a fun exercise but I dont think I will use it.
+    # This was a fun exercise but I dont think I will use it much.
     # Probably has crazy bugs. hard to find reference material about transforming velocities
     # and angular velocities between two independently moving, rotating, and oriented frames in 3D
 
     result = other.copy()
     rotation_into_frame_q = get_orient_q(frame).conj()
-    rotation_into_frame_m = quat.as_rotation_matrix(rotation_into_frame_q)
-    result[POS] = rotation_into_frame_m @ (other[POS] - frame[POS])
+    result[POS] = rotate_vector(rotation_into_frame_q, other[POS] - frame[POS])
     rotate_state(result, rotation_into_frame_q)  # affects orientation quat only
-    result[VEL] = rotation_into_frame_m @ (other[VEL] - frame[VEL]) - np.cross(
-        frame[ANGVEL], result[POS]
-    )
-    result[ANGVEL] = rotation_into_frame_m @ (other[ANGVEL] - frame[ANGVEL])
+    result[VEL] = rotate_vector(
+        rotation_into_frame_q, other[VEL] - frame[VEL]
+    ) - np.cross(frame[ANGVEL], result[POS])
+    result[ANGVEL] = rotate_vector(rotation_into_frame_q, other[ANGVEL] - frame[ANGVEL])
     return result
 
 
@@ -259,7 +258,7 @@ def normalize(vec):
     return vec
 
 
-def get_heading_elevation_bank_FRB(ship_orient_q, WRT_mat):
+def get_heading_elevation_bank_FRB(ship_orient_q, WRT_mat=np.eye(3)):
     """Get Euler or Tait-Bryan angles (radians) describing the ship's attitude
     using heading, elevation, and bank according to aircraft conventions:
     * Ship fixed frame x, y, z directions are front, right, belly (FRB) respectively
@@ -305,7 +304,7 @@ def get_heading_elevation_bank_FRB(ship_orient_q, WRT_mat):
     return np.array([heading, elevation, bank])
 
 
-def make_orientation_q_FRB(heading_elevation_bank, WRT_mat):
+def make_orientation_q_FRB(heading_elevation_bank, WRT_mat=np.eye(3)):
     """Make a quaternion that has the given heading, elevation, and bank angles
     relative to the given WRT frame. Uses aircraft conventions:
     * Ship fixed frame x, y, z directions are front, right, belly (FRB) respectively
@@ -341,15 +340,46 @@ if __name__ == '__main__':
     # h = 19646.883e6
     # p = h^2/mu = 968389
     # a = p/(1-e^2) = 9559996
-    print(
-        state_from_orbit_properties(
-            3.986e14,
-            semimajor_axis=9559996,
-            eccentricity=0.948,
-            inclination=np.deg2rad(124.05),
-            long_asc_node=np.deg2rad(190.62),
-            arg_periapsis=np.deg2rad(303.09),
-            true_anomaly=np.deg2rad(159.61),
-        )
+    test_state = state_from_orbit_properties(
+        3.986e14,
+        semimajor_axis=9559996,
+        eccentricity=0.948,
+        inclination=np.deg2rad(124.05),
+        long_asc_node=np.deg2rad(190.62),
+        arg_periapsis=np.deg2rad(303.09),
+        true_anomaly=np.deg2rad(159.61),
     )
-    # [1, 5, 7]e6, [1, 0, 0, 0], [3, 4, 5]e3, [0, 0, 0]
+
+    def vector_error_prop(v, vref):
+        delta = np.linalg.norm(v - vref)
+        return delta / np.linalg.norm(vref)
+
+    assert vector_error_prop(test_state[POS], np.array((1, 5, 7)) * 1e6) < 1e-2
+    assert np.all(test_state[ORIENT] == np.array((1, 0, 0, 0)))
+    assert vector_error_prop(test_state[VEL], np.array((3, 4, 5)) * 1e3) < 1e-2
+    assert np.all(test_state[ANGVEL] == np.zeros(3))
+    print(
+        'Orbit state vector should be [1, 5, 7]e6, [1, 0, 0, 0], [3, 4, 5]e3, [0, 0, 0]\nActual:',
+        test_state,
+    )
+
+    ship_setpoint_is_elevation_down_30deg = make_orientation_q_FRB(
+        (0, -np.pi / 6, 0), np.eye(3)
+    )
+    ship_state_is_heading_east = make_orientation_q_FRB((np.pi / 2, 0, 0), np.eye(3))
+    ship_setpoint_HEB = get_heading_elevation_bank_FRB(
+        ship_setpoint_is_elevation_down_30deg, np.eye(3)
+    )
+    ship_state_HEB = get_heading_elevation_bank_FRB(
+        ship_state_is_heading_east, np.eye(3)
+    )
+    assert np.linalg.norm(ship_setpoint_HEB - np.array((0, -np.pi / 6, 0))) < 1e-10
+    assert np.linalg.norm(ship_state_HEB - np.array((np.pi / 2, 0, 0))) < 1e-10
+
+    excess_orientation = (
+        ship_setpoint_is_elevation_down_30deg.conj() * ship_state_is_heading_east
+    )
+    print(
+        'Excess orientation HEB:',
+        get_heading_elevation_bank_FRB(excess_orientation, np.eye(3)),
+    )
