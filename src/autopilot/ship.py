@@ -57,7 +57,7 @@ class Ship:
     def calc_accel(self, state) -> np.ndarray:
         """Calculates the linear and angular acceleration (total shape (6,))
         from ship properties and the given state"""
-        result = np.zeros((sd.QDOT_N,))
+        result = np.zeros((sd.WRENCH_N,))
         # rotation_matrix = quat.as_rotation_matrix(sd.get_orient(self.state))
         # world_inertia_matrix = rotation_matrix @ self.inertia_matrix @ rotation_matrix.T
         for actor_ in self.actors:
@@ -66,7 +66,7 @@ class Ship:
 
     def calc_apparent_accel(self, state):
         """Like calc_accel but excludes gravity. Intended for reporting/logging purposes."""
-        result = np.zeros((sd.QDOT_N,))
+        result = np.zeros((sd.WRENCH_N,))
         for actor_ in self.actors:
             if actor_.is_apparent:
                 result += actor_.get_accel(state, self.mass, self.inertia_matrix)

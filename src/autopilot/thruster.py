@@ -29,7 +29,7 @@ class Thrusters_Floating_6(Thruster):
         self.thrusts = clipped * nonzero
 
     def get_accel(self, state, mass, local_inertia_matrix):
-        result = np.zeros((sd.QDOT_N,))
+        result = np.zeros((sd.WRENCH_N,))
         result[sd.LIN] = self.thrusts
         return result
 
@@ -47,6 +47,6 @@ class Thrusters_Fixed_Binary_6(Thruster):
         self.thrusts = np.sign(accel_xyz_body) * self.accel
 
     def get_accel(self, state, mass, local_inertia_matrix):
-        result = np.zeros(sd.QDOT_N)
+        result = np.zeros(sd.WRENCH_N)
         result[sd.LIN] = sd.rotate_vector(sd.get_orient_q(state), self.thrusts)
         return result

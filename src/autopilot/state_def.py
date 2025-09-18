@@ -66,20 +66,26 @@ def rotate_vector(rot_q, vec):
     return quat.as_vector_part(rotated_qv)
 
 
-# Action / qdot / ddt(state) elements
+# Wrench elements
+# A wrench is a 6-element array formed by concatenating a linear and angular something, often force and torque
 #   lin ----- | ang ----- |
 #   0   1   2   3   4   5
-QDOT_N = 6
+WRENCH_N = 6
 LIN = slice(0, 3)
 ANG = slice(3, 6)
 
 
-def make_qdot(lin=0.0, ang=0.0):
-    qdot = np.empty(QDOT_N)
-    qdot[LIN] = lin
-    qdot[ANG] = ang
-    return qdot
+def make_wrench(lin=0.0, ang=0.0):
+    wrench = np.empty(WRENCH_N)
+    wrench[LIN] = lin
+    wrench[ANG] = ang
+    return wrench
 
+
+# k is a 2xWRENCH_N array, first row is velocity, second row is acceleration.
+# 6 columns represent LIN, ANG (3 entries each)
+K_VEL = 0
+K_ACC = 1
 
 # High-level functions for manipulating states
 
@@ -159,6 +165,97 @@ def RK4_step(state, dt, accel_calculator):
     # state[ORIENT] /= np.linalg.norm(state[ORIENT])
     normalize_quat_part(result)
     return result
+
+
+def increment_state(state, state_increment):
+    """Increment the given state by the given increment.
+
+    Parameters:
+        state: initial state, will not be modified
+        state_increment: (2x6) array matching the form of k * timestep (see k in state_def).
+            Or in other words, this is state2-state1 but with rotation vector instead of quaternion, and reshaped.
+
+    """
+    new_state = state.copy()
+    # Note we use K_VEL here because state_increment is assumed to already be multiplied by time
+    new_state[POS] += state_increment[K_VEL, LIN]
+    rotate_state(new_state, quat.from_rotation_vector(state_increment[K_VEL, ANG]))
+    # Note that by how this is set up, this equality is true
+    new_state[VELS] = state_increment[K_ACC]
+
+    return new_state
+
+
+def RK4_newtoneuler_step(state, mass, inertia_matrix_body, dt, get_wrench_world):
+    """Propagate the given rigid body state given a wrench function.
+
+    Parameters:
+        state: State at the start of timestep (will not be modified in-place)
+        mass: Mass of rigid body
+        inertia_matrix_body: Moment of inertia matrix of rigid body, body frame, about center of mass
+        dt: Length of timestep
+        get_wrench_world: function matching get_wrench_world(some_state) -> [(6,) vector of total applied force and moment]
+    Returns:
+        A new state vector at end of timestep
+    """
+    # RK4 ish
+    # This entire function is written a bit verbosely (like not one-lining things) for easier debugging
+
+    # game plan:
+    # * calculate k1
+    #   * wr1 = get_wrench_world(state)
+    #   [enter scope of calc_statedot]
+    #   * convert wr1 to k1 = (vels, accs)
+    # * calculate k2
+    #   * state1 = state "+" k1 * dt/2
+    #   [leave scope of calc_statedot]
+    #   * wr2 = get_wrench_world(state1)
+    #   * convert wr2 to k2 = (vels, accs)
+    # * calculate k3
+    #   * state2 = state "+" k2 * dt/2
+    #   * wr3 = get_wrench_world(state2)
+    #   * convert wr3 to k3 = (vels, accs)
+    # * calculate k4
+    #   * state3 = state "+" k3 * dt
+    #   * wr4 = get_wrench_world(state3)
+    #   * convert wr4 to k4 = (vels, accs)
+    # * combine
+    #   * new_state = state "+"" (weighted sum of k's)
+
+    def _calc_statedot(angvel_iminusone, wrench_i, tstep):
+        k_i = np.zeros((2, WRENCH_N))
+        k_i[K_ACC, LIN] = wrench_i[LIN] / mass
+        k_i[K_VEL, LIN] = state[VEL] + k_i[K_ACC, LIN] * tstep
+        # Do Euler's rotational equation of motion in the body frame
+        # See https://en.wikipedia.org/wiki/Euler%27s_equations_(rigid_body_dynamics)
+        quat_to_world = quat.from_rotation_vector(
+            angvel_iminusone * tstep
+        ) * quat.get_orient_q(state)
+        angvel_body = rotate_vector(quat_to_world.conj(), angvel_iminusone)
+        moment_body = rotate_vector(quat_to_world.conj(), wrench_i[ANG])
+        Ialpha_body = moment_body - np.cross(
+            angvel_body, inertia_matrix_body @ angvel_body
+        )
+        alpha_body = np.linalg.solve(inertia_matrix_body, Ialpha_body)
+        k_i[K_ACC, ANG] = rotate_vector(quat_to_world, alpha_body)
+        k_i[K_VEL, ANG] = state[ANGVEL] + k_i[K_ACC, ANG] * tstep
+
+        state_i = increment_state(state, k_i * tstep)
+
+        return k_i, state_i
+
+    wrench1 = get_wrench_world(state)
+    k1, state1 = _calc_statedot(state[ANGVEL], wrench1, dt / 2)
+    wrench2 = get_wrench_world(state1)
+    k2, state2 = _calc_statedot(state1[ANGVEL], wrench2, dt / 2)
+    wrench3 = get_wrench_world(state2)
+    k3, state3 = _calc_statedot(state2[ANGVEL], wrench3, dt / 2)
+    wrench4 = get_wrench_world(state3)
+    k4, _ = _calc_statedot(state3[ANGVEL], wrench4, dt)
+
+    k_avg = (k1 + 2 * k2 + 2 * k3 + k4) / 6
+    new_state = increment_state(state, k_avg * dt)
+    return new_state
 
 
 def state_from_orbit_properties(

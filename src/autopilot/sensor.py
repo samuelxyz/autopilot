@@ -213,7 +213,7 @@ class DistanceSignal(IntermittentSensor):
 
     def update_simulation(self, dt):
         def calc_accel(state):
-            result = np.zeros((sd.QDOT_N,))
+            result = np.zeros((sd.WRENCH_N,))
             for actor in self.satellite_actors:
                 result += actor.get_accel(state, None, None)
             return result

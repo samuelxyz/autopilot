@@ -15,7 +15,7 @@ class Actor:
         self.is_apparent = is_apparent
 
     def get_accel(self, state, mass, local_inertia_matrix):
-        return np.zeros((sd.QDOT_N,))
+        return np.zeros((sd.WRENCH_N,))
 
 
 class Gravity(Actor):
@@ -27,7 +27,7 @@ class Gravity(Actor):
     def get_accel(self, state, mass, inertia_matrix, min_radius=1):
         """min_radius is to avoid gravitational singularities"""
         r = state[sd.POS] - self.pos
-        result = np.zeros((sd.QDOT_N,))
+        result = np.zeros((sd.WRENCH_N,))
         if np.linalg.norm(r) < min_radius:
             return result  # hardcoded to avoid bugginess
         result[sd.LIN] = -self.GM * r / np.linalg.norm(r) ** 3
@@ -48,7 +48,7 @@ class Drag_Equation(Actor):
         v = self.state_to_airspeed(state)
         rho = self.state_to_density(state)
         force = -0.5 * rho * v * np.linalg.norm(v) * self.drag_coeff * self.cs_area
-        return sd.make_qdot(lin=force / mass)
+        return sd.make_wrench(lin=force / mass)
 
 
 class Lift_Equation(Actor):
@@ -72,6 +72,6 @@ class Lift_Equation(Actor):
             freestream_right_dir = sd.normalize_or_err(np.cross(belly_dir, v))
             lift_dir = sd.normalize_or_err(np.cross(freestream_right_dir, v))
         except ValueError:
-            return sd.make_qdot()
+            return sd.make_wrench()
         force = 0.5 * rho * np.dot(v, v) * self.lift_coeff * self.wing_area * lift_dir
-        return sd.make_qdot(lin=force / mass)
+        return sd.make_wrench(lin=force / mass)
