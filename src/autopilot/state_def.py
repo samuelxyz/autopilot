@@ -377,7 +377,7 @@ def make_orientation_q_FRB(heading_elevation_bank, WRT_mat=np.eye(3)):
     return np.normalized(result)
 
 
-if __name__ == '__main__':
+def sd_test():
     # h = 19646.883e6
     # p = h^2/mu = 968389
     # a = p/(1-e^2) = 9559996
@@ -424,3 +424,7 @@ if __name__ == '__main__':
         'Excess orientation HEB:',
         get_heading_elevation_bank_FRB(excess_orientation, np.eye(3)),
     )
+
+
+if __name__ == '__main__':
+    sd_test()
