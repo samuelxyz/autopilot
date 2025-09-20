@@ -4,7 +4,8 @@ from autopilot import state_def as sd
 
 def make_state_transition_matrix(dt, state):
     """13x13 matrix (according to state_def.STATE_N) that when multiplied
-    by a state x predicts the next state xprime. Intended for Extended Kalman Filter"""
+    by a state x predicts the next state xprime. Intended for Extended Kalman Filter.
+    Actors are not yet modeled"""
     a, b, c = state[sd.ANGVEL] * dt / 2
 
     # fmt: off
@@ -234,7 +235,7 @@ class ExtendedKalmanFilter(KalmanFilter):
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    import sim_tools
+    from autopilot import sim_tools
 
     def kalman_test():
         """Sine following test, N=2, M=2"""

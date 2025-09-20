@@ -18,13 +18,12 @@ from autopilot import state_def as sd
 def scenario_ideal_binary_control():
     # thruster_pack = thruster.Thrusters_Floating_6()
     # controller_ = controller.PID(np.zeros(3), (0.5, 0, 5), (3,), thruster_pack)
-    thruster_accel = 2
-    thruster_pack = thruster.Thrusters_Fixed_Binary_6(thruster_accel)
+    thruster_spec = 2
+    thruster_pack = thruster.Thrusters_Fixed_Binary_6(thruster_spec)
     controller_ = controller.Binary_Controller_3(
-        sd.make_state(), thruster_accel, thruster_pack
+        sd.make_state(), thruster_spec, thruster_pack
     )
-    state = sd.make_state()
-    state[sd.VEL] = 2.0 * np.ones(3)
+    state = sd.make_state(vel=2.0 * np.ones(3))
     ship_ = ship.Ship(
         state,
         1,
@@ -39,7 +38,7 @@ def scenario_ideal_binary_control():
     time = np.linspace(0, 10, num_steps)
     values_to_track = {
         # name: (reference, optional shape to be used if reference is uninitialized)
-        'true_state': ship_.state,
+        'true_state': lambda: ship_.state,
         'thrusts': lambda: thruster_pack.thrusts,  # lambda is needed because apparently np.zeros() produces something that gets stored as a value instead of a reference? or something. anyway it doesnt update properly without the lambda
     }
     hist = sim_tools.History(num_steps, values_to_track)
@@ -48,7 +47,7 @@ def scenario_ideal_binary_control():
     fig, ax = plt.subplots()
     ax.plot(time, hist['true_state'][:, sd.POS.start], label='pos.x (m)')
     ax.plot(time, hist['true_state'][:, sd.VEL.start], label='vel.x (m/s)')
-    ax.plot(time, hist['thrusts'][:, 0], label='thruster.x (m/s^2)')
+    ax.plot(time, hist['thrusts'][:, 0], label='thruster.x (N)')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Value')
     ax.legend()
@@ -219,8 +218,9 @@ def scenario_EDL():
         {
             'true_state': lambda: ship_.state,
             'g_load': lambda: np.linalg.norm(
-                ship_.calc_apparent_accel(ship_.state)[sd.LIN]
+                ship_.calc_apparent_wrench(ship_.state)[sd.LIN]
             )
+            / ship_.mass
             / 9.80665,
             'altitude': lambda: earth.get_altitude(ship_.state),
             'mach': lambda: earth.get_mach_number(ship_.state),
@@ -230,10 +230,10 @@ def scenario_EDL():
             'radiative_flux': lambda: radiative_flux,
             'heat_shield_temp': lambda: heat_shield_temp,
             'density': lambda: earth.get_atmo_density(ship_.state),
-            'lift': lambda: lift_eq.get_accel(
+            'lift': lambda: lift_eq.get_wrench(
                 ship_.state, ship_.mass, ship_.inertia_matrix
             ),
-            'drag': lambda: drag_eq.get_accel(
+            'drag': lambda: drag_eq.get_wrench(
                 ship_.state, ship_.mass, ship_.inertia_matrix
             ),
             'HEB': lambda: earth.get_euler_angles_NED(ship_.state),

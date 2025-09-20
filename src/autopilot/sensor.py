@@ -208,17 +208,29 @@ class DistanceSignal(IntermittentSensor):
         super().__init__(1, constant_noise, sensing_interval, randseed)
         self.satellite_state = satellite_state
         self.satellite_actors = satellite_actors
+        self.satellite_mass = (
+            1  # dummy value, doesn't matter since we are only planning to use gravity
+        )
+        self.satellite_inertia = np.eye(3)
 
     # TODO: add occultation checks for is_available()
 
     def update_simulation(self, dt):
-        def calc_accel(state):
-            result = np.zeros((sd.WRENCH_N,))
+        def get_wrench(state):
+            result = sd.make_wrench()
             for actor in self.satellite_actors:
-                result += actor.get_accel(state, None, None)
+                result += actor.get_wrench(
+                    state, self.satellite_mass, self.satellite_inertia
+                )
             return result
 
-        self.satellite_state = sd.RK4_step(self.satellite_state, dt, calc_accel)
+        self.satellite_state = sd.RK4_newtoneuler_step(
+            self.satellite_state,
+            self.satellite_mass,
+            self.satellite_inertia,
+            dt,
+            get_wrench,
+        )
 
     def new_reading(self, true_state):
         distance = np.linalg.vector_norm(
@@ -260,7 +272,7 @@ class SensorSystem:
             (self.x.size, self.x.size)
         )  # covariance/error of x is zero because ideal
 
-    def predict_step(self, dt, accel_predictor):
+    def predict_step(self, mass, inertia_matrix, dt, accel_predictor):
         # self.x = sd.RK4_step(self.x, dt, accel_predictor)
         # sd.normalize_quat_part(self.EKF.x)
         pass
@@ -283,11 +295,13 @@ class SensorSystem_EKF(SensorSystem):
             True  # Whether self.EKF.x is better to use than self.EKF.xp
         )
 
-    def predict_step(self, dt, accel_predictor):
+    def predict_step(self, mass, inertia_matrix, dt, wrench_predictor):
         """Run the prediction step of the EKF, propagating the estimated state by one timestep.
         Updates EKF.xp and EKF.Pp, but not EKF.x or EKF.P"""
 
-        xp = sd.RK4_step(self.EKF.x, dt, accel_predictor)
+        xp = sd.RK4_newtoneuler_step(
+            self.EKF.x, mass, inertia_matrix, dt, wrench_predictor
+        )
 
         A = kalman.make_state_transition_matrix(dt, self.EKF.x)
         self.EKF.predict_step(xp, A, self.Q)

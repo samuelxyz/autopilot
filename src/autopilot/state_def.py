@@ -87,6 +87,7 @@ def make_wrench(lin=0.0, ang=0.0):
 K_VEL = 0
 K_ACC = 1
 
+
 # High-level functions for manipulating states
 
 
@@ -109,64 +110,6 @@ def change_to_frame(frame: np.array, other: np.array):
     return result
 
 
-def RK4_step(state, dt, accel_calculator):
-    """Propagate the given state given an acceleration function.
-
-    Parameters:
-        state: State at the start of timestep (will not be modified in-place)
-        dt: Length of timestep
-        accel_calculator: function matching accel_calculator(some_state) -> [linear and angular acceleration]
-    Returns:
-        A new state vector at end of timestep
-    """
-    # RK4 ish
-    # Call old conditions a0, v0, q0
-    # Step 1 with dt/2, a0 -> v[0 -> 1] -> q[0 -> 1] -> a1
-    accel0 = accel_calculator(state)
-    state1 = state.copy()
-    state1[VELS] += accel0 * dt / 2
-    state1[POS] += state1[VEL] * dt / 2
-    rotate_state(state1, quat.from_rotation_vector(state1[ANGVEL] * dt / 2))
-    accel1 = accel_calculator(state1)
-    # Step 2 with dt/2, a1 -> v[0 -> 2] -> q[0 -> 2] -> a2
-    state2 = state.copy()
-    state2[VELS] += accel1 * dt / 2
-    state2[POS] += state2[VEL] * dt / 2
-    rotate_state(state2, quat.from_rotation_vector(state2[ANGVEL] * dt / 2))
-    accel2 = accel_calculator(state2)
-    # Step 3 with dt, a2 -> v[0 -> 3] -> q[0 -> 3] -> a3
-    state3 = state.copy()
-    state3[VELS] += accel2 * dt / 2
-    state3[POS] += state3[VEL] * dt
-    rotate_state(state3, quat.from_rotation_vector(state3[ANGVEL] * dt / 2))
-    accel3 = accel_calculator(state3)
-    # Step 4 with dt, fractional weights
-
-    result = state.copy()
-    result[POS] += (
-        dt / 6 * (state[VEL] + 2 * state1[VEL] + 2 * state2[VEL] + state3[VEL])
-    )
-    rotate_state(
-        result,
-        quat.from_rotation_vector(
-            dt
-            / 6
-            * (
-                result[ANGVEL]
-                + 2 * state1[ANGVEL]
-                + 2 * state2[ANGVEL]
-                + state3[ANGVEL]
-            )
-        ),
-    )
-    result[VELS] += dt / 6 * (accel0 + 2 * accel1 + 2 * accel2 + accel3)
-
-    # normalize orientation quaternion
-    # state[ORIENT] /= np.linalg.norm(state[ORIENT])
-    normalize_quat_part(result)
-    return result
-
-
 def increment_state(state, state_increment):
     """Increment the given state by the given increment.
 
@@ -181,7 +124,7 @@ def increment_state(state, state_increment):
     new_state[POS] += state_increment[K_VEL, LIN]
     rotate_state(new_state, quat.from_rotation_vector(state_increment[K_VEL, ANG]))
     # Note that by how this is set up, this equality is true
-    new_state[VELS] = state_increment[K_ACC]
+    new_state[VELS] += state_increment[K_ACC]
 
     return new_state
 
@@ -196,12 +139,12 @@ def RK4_newtoneuler_step(state, mass, inertia_matrix_body, dt, get_wrench_world)
         dt: Length of timestep
         get_wrench_world: function matching get_wrench_world(some_state) -> [(6,) vector of total applied force and moment]
     Returns:
-        A new state vector at end of timestep
+        new_state: A new state vector at end of timestep
     """
     # RK4 ish
     # This entire function is written a bit verbosely (like not one-lining things) for easier debugging
 
-    # game plan:
+    # game plan: (see section above for explanation of K)
     # * calculate k1
     #   * wr1 = get_wrench_world(state)
     #   [enter scope of calc_statedot]
@@ -230,7 +173,8 @@ def RK4_newtoneuler_step(state, mass, inertia_matrix_body, dt, get_wrench_world)
         # See https://en.wikipedia.org/wiki/Euler%27s_equations_(rigid_body_dynamics)
         quat_to_world = quat.from_rotation_vector(
             angvel_iminusone * tstep
-        ) * quat.get_orient_q(state)
+        ) * get_orient_q(state)
+        # Possibly incorporate alpha_iminusone? Future option
         angvel_body = rotate_vector(quat_to_world.conj(), angvel_iminusone)
         moment_body = rotate_vector(quat_to_world.conj(), wrench_i[ANG])
         Ialpha_body = moment_body - np.cross(

@@ -41,10 +41,14 @@ class Ship:
             dt: length of timestep
         """
         # Physics
-        self.state = sd.RK4_step(self.state, dt, self.calc_accel)
+        self.state = sd.RK4_newtoneuler_step(
+            self.state, self.mass, self.inertia_matrix, dt, self.calc_total_wrench
+        )
 
         # Predict
-        self.state_det_system.predict_step(dt, self.calc_accel)
+        self.state_det_system.predict_step(
+            self.mass, self.inertia_matrix, dt, self.calc_total_wrench
+        )
 
         # Sense
         self.state_det_system.sense(self.state, start_time)
@@ -52,22 +56,24 @@ class Ship:
 
         # Control
         if self.controller is not None:
-            self.controller.update(self.state_estimate[0], dt)
+            self.controller.update(
+                self.state_estimate[0], self.mass, self.inertia_matrix, dt
+            )
 
-    def calc_accel(self, state) -> np.ndarray:
-        """Calculates the linear and angular acceleration (total shape (6,))
-        from ship properties and the given state"""
+    def calc_total_wrench(self, state) -> np.ndarray:
+        """Calculates the force and moment (total shape (6,))
+        from ship properties and the given state, in the world frame"""
         result = np.zeros((sd.WRENCH_N,))
         # rotation_matrix = quat.as_rotation_matrix(sd.get_orient(self.state))
         # world_inertia_matrix = rotation_matrix @ self.inertia_matrix @ rotation_matrix.T
         for actor_ in self.actors:
-            result += actor_.get_accel(state, self.mass, self.inertia_matrix)
+            result += actor_.get_wrench(state, self.mass, self.inertia_matrix)
         return result
 
-    def calc_apparent_accel(self, state):
-        """Like calc_accel but excludes gravity. Intended for reporting/logging purposes."""
+    def calc_apparent_wrench(self, state):
+        """Like calc_total_wrench but excludes gravity. Intended for reporting/logging purposes."""
         result = np.zeros((sd.WRENCH_N,))
         for actor_ in self.actors:
             if actor_.is_apparent:
-                result += actor_.get_accel(state, self.mass, self.inertia_matrix)
+                result += actor_.get_wrench(state, self.mass, self.inertia_matrix)
         return result
